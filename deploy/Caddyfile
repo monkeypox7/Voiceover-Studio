@@ -1,0 +1,55 @@
+# Password gate and HTTPS for the server version.
+#
+# The voice engine has no login of its own, so the basic_auth block below is
+# the only thing between the internet and it. Do not remove it.
+#
+# Caddy gets a free HTTPS certificate from Let's Encrypt automatically, as
+# long as SITE_ADDRESS is a real domain name pointing at this server.
+
+{
+	email {$ACME_EMAIL:admin@example.com}
+	servers {
+		timeouts {
+			read_body 5m
+			write 30m
+			idle 30m
+		}
+	}
+}
+
+{$SITE_ADDRESS} {
+	encode gzip
+
+	basic_auth {
+		{$AUTH_USER} {$AUTH_HASH}
+	}
+
+	# Anything the voice engine owns goes straight through to it.
+	@engine path /v1/* /health /web/* /openapi.json
+	handle @engine {
+		reverse_proxy kokoro:8880 {
+			# Audio is streamed sentence by sentence. Without this Caddy buffers
+			# it and long scripts look frozen until the very end.
+			flush_interval -1
+			transport http {
+				read_timeout 30m
+				write_timeout 30m
+			}
+		}
+	}
+
+	# Everything else is the Studio page itself, served straight from disk so
+	# the plain address is all anyone needs.
+	handle {
+		root * /srv
+		try_files {path} /studio.html
+		file_server
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10mb
+			roll_keep 3
+		}
+	}
+}

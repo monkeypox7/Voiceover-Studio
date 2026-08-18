@@ -1,0 +1,53 @@
+# Voiceover Studio, running on an always-on server instead of the office PC.
+#
+# Two containers:
+#   kokoro - the voice engine. Not reachable from the internet at all, it is
+#            only on the private network between these two containers.
+#   gate   - Caddy. Holds the HTTPS certificate, asks for the password, and
+#            passes the request through to kokoro. Serves the Studio page.
+#
+# Everything is driven by the .env file that install.sh writes.
+
+services:
+  kokoro:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.2
+    container_name: kokoro
+    restart: always
+    expose:
+      - "8880"
+    networks:
+      - voiceover
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8880/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  gate:
+    image: caddy:2.10-alpine
+    container_name: voiceover-gate
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+      AUTH_USER: ${AUTH_USER}
+      AUTH_HASH: ${AUTH_HASH}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./web:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - voiceover
+    depends_on:
+      - kokoro
+
+networks:
+  voiceover:
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,2582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>Voiceover Studio</title>
+<link rel="icon" href="/web/favicon.svg">
+<style>
+:root {
+  --bg: #f7f6f3;
+  --surface: #ffffff;
+  --surface-2: #f2f1ec;
+  --surface-3: #e9e7e0;
+  --border: #e4e1da;
+  --border-strong: #d2cec4;
+  --text: #1c1b19;
+  --text-muted: #605c55;
+  --text-dim: #6f6a60;
+  --ink: #1f1e1c;
+  --ink-hover: #33312e;
+  --accent: #4338ca;
+  --accent-hover: #372ec0;
+  --accent-soft: #eeefff;
+  --accent-border: #c6c4f4;
+  --good: #15803d;
+  --warn: #92400e;
+  --warn-soft: #fdf4e7;
+  --danger: #b42318;
+  --danger-soft: #fdf2f1;
+
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;
+
+  /* one motion language for the whole page */
+  --dur-1: 130ms;                              /* exits, quick feedback */
+  --dur-2: 200ms;                              /* standard entrances */
+  --dur-3: 280ms;                              /* larger surfaces */
+  --ease-out: cubic-bezier(.16, 1, .3, 1);     /* entering */
+  --ease-in: cubic-bezier(.4, 0, 1, 1);        /* leaving */
+  --ease-both: cubic-bezier(.4, 0, .2, 1);
+
+  --shadow-pop: 0 10px 30px rgba(28,27,25,.13), 0 2px 6px rgba(28,27,25,.06);
+
+  --font: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, "Liberation Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg); color: var(--text);
+  font-family: var(--font); font-size: 16px; line-height: 1.55;
+  -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+}
+body { min-height: 100vh; min-height: 100dvh; }
+
+h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -.011em; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ---------------------------------------------------------------- top bar */
+
+.topbar {
+  position: sticky; top: 0; z-index: 80;
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 20px; padding-top: max(14px, env(safe-area-inset-top));
+  background: rgba(247,246,243,.88);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+.brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.brand-mark {
+  display: grid; place-items: center;
+  width: 32px; height: 32px; flex: 0 0 32px;
+  border-radius: 9px; background: var(--ink); color: #fff;
+}
+.brand-text { min-width: 0; }
+.brand-text h1 { font-size: 16px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand-text p { margin: 0; font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.status-pill {
+  margin-left: auto;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-strong); border-radius: 999px;
+  background: var(--surface);
+  font-size: 13px; color: var(--text-muted); white-space: nowrap;
+}
+.dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--text-dim); flex: 0 0 7px;
+  transition: background var(--dur-2) var(--ease-both);
+}
+.status-pill[data-state="ok"] .dot { background: var(--good); }
+.status-pill[data-state="down"] .dot { background: var(--danger); }
+
+/* ----------------------------------------------------------------- layout */
+
+.layout {
+  display: grid; gap: 18px;
+  padding: 20px; padding-bottom: calc(40px + env(safe-area-inset-bottom));
+  max-width: 1220px; margin: 0 auto; align-items: start;
+}
+.panel {
+  scroll-margin-top: 86px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  /* Grid children refuse to shrink below their content by default, which lets
+     one wide control push the whole page sideways on a phone. */
+  min-width: 0;
+}
+.panel-body, .controls, .control-row, .sent-wrap, .sents, .sent { min-width: 0; }
+.panel-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 15px 18px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.panel-head h2 { font-size: 15px; }
+.panel-head .count { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.panel-body { padding: 18px; }
+
+/* Collapsible without a layout jump: 0fr to 1fr on a grid row.
+   The inner box has to clip while it animates, but must stop clipping once it
+   is open or it cuts the dropdown menus off. */
+.collapse { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--dur-3) var(--ease-both); }
+.collapse > .collapse-inner { overflow: hidden; min-height: 0; }
+.collapse.is-open-done > .collapse-inner { overflow: visible; }
+.collapse.is-closed { grid-template-rows: 0fr; }
+
+/* --------------------------------------------------------------- controls */
+
+.field { display: grid; gap: 7px; }
+.field > label, .control-label { font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
+.hint { font-size: 12.5px; color: var(--text-dim); margin: 0; }
+.hint-spaced { margin-top: 12px; }
+.hint-tip { margin-top: 10px; }
+
+input[type="search"], textarea {
+  width: 100%; font: inherit; font-size: 15px; color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: var(--r-sm);
+  padding: 10px 12px; min-height: 44px;
+  transition: border-color var(--dur-1) var(--ease-both), box-shadow var(--dur-1) var(--ease-both);
+}
+input[type="search"]:focus, textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(67,56,202,.11);
+  outline: none;
+}
+@media (max-width: 620px) { input[type="search"], textarea { font-size: 16px; } }
+input[type="search"]::placeholder, textarea::placeholder { color: #9d9890; }
+input[type="search"] { padding-left: 36px; }
+
+.search-wrap { position: relative; display: flex; align-items: center; }
+.search-wrap svg { position: absolute; left: 12px; color: var(--text-dim); pointer-events: none; }
+
+/* ------------------------------------------------------- custom dropdown */
+
+.sel { position: relative; }
+.sel-btn {
+  width: 100%; min-height: 44px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  font: inherit; font-size: 15px; text-align: left; color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: border-color var(--dur-1) var(--ease-both),
+              box-shadow var(--dur-1) var(--ease-both),
+              background var(--dur-1) var(--ease-both);
+}
+.sel-btn:hover { background: var(--surface-2); }
+.sel.is-open .sel-btn {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(67,56,202,.11);
+  background: var(--surface);
+}
+.sel-value { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sel-caret {
+  flex: 0 0 auto; color: var(--text-muted);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+.sel.is-open .sel-caret { transform: rotate(180deg); }
+
+.sel-list {
+  position: absolute; z-index: 70;
+  top: calc(100% + 6px); left: 0; right: auto;
+  min-width: 100%; width: max-content;
+  max-width: min(340px, calc(100vw - 32px));
+  margin: 0; padding: 5px; list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  box-shadow: var(--shadow-pop);
+  max-height: 292px; overflow-y: auto; overscroll-behavior: contain;
+  opacity: 0; visibility: hidden;
+  transform: translateY(-6px) scale(.985);
+  transform-origin: top center;
+  transition: opacity var(--dur-1) var(--ease-in),
+              transform var(--dur-1) var(--ease-in),
+              visibility 0s linear var(--dur-1);
+}
+.sel-list.align-right { left: auto; right: 0; }
+.sel.is-open .sel-list {
+  opacity: 1; visibility: visible; transform: none;
+  transition: opacity var(--dur-2) var(--ease-out),
+              transform var(--dur-2) var(--ease-out),
+              visibility 0s;
+}
+
+.sel-opt {
+  display: flex; align-items: flex-start; gap: 9px;
+  min-height: 42px; padding: 9px 10px;
+  border-radius: 7px; cursor: pointer;
+  opacity: 0; transform: translateY(-4px);
+  transition: opacity var(--dur-1) var(--ease-in),
+              transform var(--dur-1) var(--ease-in),
+              background var(--dur-1) var(--ease-both);
+}
+.sel.is-open .sel-opt {
+  opacity: 1; transform: none;
+  transition: opacity var(--dur-2) var(--ease-out),
+              transform var(--dur-2) var(--ease-out),
+              background var(--dur-1) var(--ease-both);
+  transition-delay: calc(min(var(--i, 0), 8) * 20ms), calc(min(var(--i, 0), 8) * 20ms), 0s;
+}
+.sel-opt.is-active { background: var(--surface-2); }
+.sel-opt[aria-selected="true"] { background: var(--accent-soft); }
+.sel-opt-tick {
+  flex: 0 0 auto; width: 16px; height: 16px; margin-top: 3px;
+  color: var(--accent);
+  opacity: 0; transform: scale(.6);
+  transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out);
+}
+.sel-opt[aria-selected="true"] .sel-opt-tick { opacity: 1; transform: none; }
+.sel-opt-text { flex: 1 1 auto; min-width: 0; }
+.sel-opt-label { display: block; font-size: 14.5px; line-height: 1.35; }
+.sel-opt-desc { display: block; font-size: 12px; color: var(--text-muted); line-height: 1.4; margin-top: 1px; }
+
+.filter-grid { display: grid; gap: 10px; margin-bottom: 14px; }
+.filter-grid .row { display: grid; gap: 10px; }
+@media (min-width: 460px) { .filter-grid .row { grid-template-columns: 1fr 1fr; } }
+
+/* ------------------------------------------------------------ voice list */
+
+.voice-toggle {
+  margin-left: auto;
+  display: inline-flex; align-items: center; gap: 7px;
+  min-height: 38px; padding: 7px 12px;
+  border: 1px solid var(--border-strong); border-radius: var(--r-sm);
+  background: var(--surface); color: var(--text);
+  font: inherit; font-size: 13px; cursor: pointer;
+  transition: background var(--dur-1) var(--ease-both), transform var(--dur-1) var(--ease-both);
+}
+.voice-toggle:hover { background: var(--surface-2); }
+.voice-toggle:active { transform: scale(.97); }
+.voice-toggle svg { transition: transform var(--dur-2) var(--ease-out); }
+.voice-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+
+.voice-list {
+  display: grid; gap: 5px;
+  max-height: min(52vh, 460px);
+  overflow-y: auto; overscroll-behavior: contain;
+  padding: 2px; margin: 0 -2px;
+  scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent;
+}
+.voice-list::-webkit-scrollbar { width: 10px; }
+.voice-list::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; border: 3px solid var(--surface); }
+
+.voice {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 6px 4px 8px;
+  border: 1px solid transparent; border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease-both),
+              border-color var(--dur-1) var(--ease-both),
+              transform var(--dur-1) var(--ease-both);
+}
+.voice:hover { background: var(--surface-2); }
+.voice:active { transform: scale(.994); }
+.voice:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.voice.is-selected { background: var(--accent-soft); border-color: var(--accent-border); }
+.voice.is-hidden { display: none; }
+.voice input[type="radio"] { position: absolute; opacity: 0; width: 1px; height: 1px; }
+
+.voice-check {
+  flex: 0 0 auto; width: 18px; height: 18px;
+  display: grid; place-items: center;
+  border: 2px solid var(--border-strong); border-radius: 50%;
+  background: var(--surface); color: transparent;
+  transition: border-color var(--dur-2) var(--ease-out),
+              background var(--dur-2) var(--ease-out),
+              color var(--dur-2) var(--ease-out);
+}
+.voice-check svg { opacity: 0; transform: scale(.4); transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out); }
+.voice.is-selected .voice-check { border-color: var(--accent); background: var(--accent); color: #fff; }
+.voice.is-selected .voice-check svg { opacity: 1; transform: none; }
+
+.voice-label {
+  flex: 1 1 auto; min-width: 0;
+  display: grid; gap: 1px;
+  padding: 7px 4px; cursor: pointer;
+  min-height: 44px; align-content: center;
+}
+.voice-name { font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.voice-meta { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.tag {
+  display: inline-block; margin-left: 6px; padding: 0 6px;
+  border-radius: 5px; background: var(--surface-3); color: var(--text-muted);
+  font-size: 10px; line-height: 16px; vertical-align: 1px;
+  text-transform: uppercase; letter-spacing: .045em; font-weight: 600;
+}
+.tag-star { background: #efeaff; color: #4c37a8; }
+.tag-old { background: #f0ece6; color: #6b6355; }
+
+.icon-btn {
+  flex: 0 0 auto;
+  display: grid; place-items: center;
+  width: 42px; height: 42px;
+  border: 1px solid var(--border-strong); border-radius: 9px;
+  background: var(--surface); color: var(--text); cursor: pointer;
+  transition: background var(--dur-1) var(--ease-both),
+              color var(--dur-1) var(--ease-both),
+              border-color var(--dur-1) var(--ease-both),
+              transform var(--dur-1) var(--ease-both);
+}
+.icon-btn:hover { background: var(--surface-2); }
+.icon-btn:active { transform: scale(.93); }
+.icon-btn[data-state="playing"] { background: #e8f5ec; border-color: #9fcfae; color: var(--good); }
+.icon-btn[data-state="loading"] { color: var(--text-dim); }
+.icon-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.empty-note { padding: 18px 6px; text-align: center; color: var(--text-dim); font-size: 14px; margin: 0; }
+
+/* ------------------------------------------------------------- work panel */
+
+textarea { min-height: 200px; resize: vertical; line-height: 1.65; }
+
+.counter {
+  display: flex; justify-content: space-between; gap: 12px;
+  font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums;
+}
+.counter.is-warn { color: var(--warn); }
+
+.notice {
+  display: flex; gap: 9px;
+  margin-top: 10px; padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--warn-soft); border: 1px solid #f0dcbb; color: #6b4310;
+  font-size: 13px; line-height: 1.5;
+  animation: rise var(--dur-3) var(--ease-out) both;
+}
+.notice svg { flex: 0 0 auto; margin-top: 2px; }
+.notice.is-info { background: var(--accent-soft); border-color: var(--accent-border); color: #35309a; }
+
+.controls {
+  display: grid; gap: 14px;
+  margin-top: 18px; padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+.control-row { display: grid; gap: 7px; }
+.control-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.control-value { font-family: var(--mono); font-size: 13px; color: var(--text); font-variant-numeric: tabular-nums; }
+
+.selected-voice {
+  display: flex; align-items: center; gap: 9px;
+  padding: 9px 11px;
+  border: 1px solid var(--accent-border); border-radius: var(--r-md);
+  background: var(--accent-soft);
+}
+.selected-voice .sv-text { flex: 1 1 auto; min-width: 0; }
+.selected-voice .sv-name { font-size: 15px; font-weight: 600; }
+.selected-voice .sv-meta { font-size: 12px; color: var(--text-muted); word-break: break-word; }
+
+input[type="range"] {
+  width: 100%; height: 40px; margin: 0;
+  background: transparent; appearance: none; cursor: pointer;
+}
+input[type="range"]::-webkit-slider-runnable-track { height: 5px; border-radius: 999px; background: var(--surface-3); }
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none; width: 20px; height: 20px; margin-top: -7.5px;
+  border-radius: 50%; background: var(--ink); border: 3px solid #fff;
+  box-shadow: 0 0 0 1px var(--border-strong);
+  transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out);
+}
+input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.12); }
+input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.2); box-shadow: 0 0 0 1px var(--border-strong), 0 0 0 7px rgba(67,56,202,.13); }
+input[type="range"]::-moz-range-track { height: 5px; border-radius: 999px; background: var(--surface-3); }
+input[type="range"]::-moz-range-thumb {
+  width: 17px; height: 17px; border-radius: 50%;
+  background: var(--ink); border: 3px solid #fff; box-shadow: 0 0 0 1px var(--border-strong);
+  transition: transform var(--dur-1) var(--ease-out);
+}
+input[type="range"]:active::-moz-range-thumb { transform: scale(1.2); }
+
+.reset-mini {
+  font: inherit; font-size: 12px; color: var(--text-muted);
+  background: none; border: 0; padding: 2px 4px; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 2px;
+  transition: color var(--dur-1) var(--ease-both);
+}
+.reset-mini:hover { color: var(--accent); }
+
+.mini-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 38px; padding: 8px 12px;
+  border: 1px solid var(--border-strong); border-radius: 7px;
+  background: var(--surface); color: var(--text);
+  font: inherit; font-size: 13px; cursor: pointer;
+  transition: background var(--dur-1) var(--ease-both), transform var(--dur-1) var(--ease-both);
+}
+.mini-btn:hover { background: var(--surface-2); }
+.mini-btn:active { transform: scale(.97); }
+
+.actions { display: grid; gap: 10px; margin-top: 20px; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+  min-height: 48px; padding: 12px 20px;
+  border-radius: var(--r-md); border: 1px solid transparent;
+  font: inherit; font-size: 15.5px; font-weight: 600;
+  cursor: pointer; text-decoration: none;
+  transition: background var(--dur-1) var(--ease-both),
+              border-color var(--dur-1) var(--ease-both),
+              transform var(--dur-1) var(--ease-out),
+              box-shadow var(--dur-1) var(--ease-out);
+}
+.btn:hover:not(:disabled) { transform: translateY(-1px); }
+.btn:active:not(:disabled) { transform: scale(.985); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn-primary { background: var(--ink); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--ink-hover); box-shadow: 0 6px 16px rgba(28,27,25,.18); }
+.btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border-strong); }
+.btn-secondary:hover:not(:disabled) { background: var(--surface-2); }
+.btn-download { background: var(--accent); color: #fff; }
+.btn-download:hover { background: var(--accent-hover); box-shadow: 0 6px 16px rgba(67,56,202,.26); }
+
+/* -------------------------------------------------------- status + result */
+
+.status {
+  margin-top: 16px;
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 13px;
+  border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  background: var(--surface-2); font-size: 14px;
+  animation: rise var(--dur-2) var(--ease-out) both;
+}
+.status.is-error { border-color: #e9b7b2; background: var(--danger-soft); color: #7a1d15; }
+.status .msg { flex: 1 1 auto; min-width: 0; }
+.status .elapsed { font-family: var(--mono); font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+.progress {
+  position: relative; height: 3px; margin-top: 10px;
+  border-radius: 999px; background: var(--surface-3); overflow: hidden;
+}
+.progress::after {
+  content: ""; position: absolute; inset: 0; width: 38%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: slide 1.4s var(--ease-both) infinite;
+}
+@keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.result {
+  margin-top: 16px; padding: 16px;
+  border: 1px solid var(--accent-border); border-radius: var(--r-md);
+  background: var(--accent-soft);
+  animation: rise var(--dur-3) var(--ease-out) both;
+}
+.result h3 { font-size: 14px; margin-bottom: 3px; }
+.result .file-meta { font-size: 12px; color: var(--text-muted); word-break: break-all; margin: 0 0 12px; }
+.result audio { width: 100%; margin-bottom: 14px; display: block; }
+.result-actions { display: grid; gap: 10px; }
+
+footer {
+  max-width: 1220px; margin: 0 auto;
+  padding: 0 20px calc(30px + env(safe-area-inset-bottom));
+  color: var(--text-dim); font-size: 12px;
+}
+footer a { color: var(--text-muted); }
+
+/* ------------------------------------------------- sentence pause strip */
+
+.sent-wrap {
+  margin-top: 16px; padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.sents {
+  display: grid; gap: 5px; margin-top: 10px;
+  max-height: min(46vh, 380px); overflow-y: auto; overscroll-behavior: contain;
+  padding: 2px; margin-left: -2px; margin-right: -2px;
+}
+.sent {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px 6px 6px;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface-2);
+  transition: border-color var(--dur-1) var(--ease-both), background var(--dur-1) var(--ease-both);
+  animation: rise var(--dur-2) var(--ease-out) both;
+}
+.sent:hover { background: var(--surface-3); }
+.sent.is-playing { border-color: var(--good); background: #f0faf3; }
+.sent.is-set { border-color: var(--accent-border); background: var(--accent-soft); }
+
+.sent-num {
+  flex: 0 0 auto; width: 20px; text-align: right;
+  font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.sent-text {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 14px; line-height: 1.4; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sent-est {
+  flex: 0 0 auto; font-family: var(--mono); font-size: 11.5px;
+  color: var(--text-dim); font-variant-numeric: tabular-nums;
+}
+.sent-pause {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11.5px; color: var(--text-dim); white-space: nowrap;
+}
+.sent-pause input {
+  width: 64px; min-height: 32px;
+  font: inherit; font-size: 12.5px; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: 6px; padding: 3px 6px;
+  font-variant-numeric: tabular-nums;
+}
+.sent-pause input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sent-pause input.is-set { border-color: var(--accent); background: var(--accent-soft); }
+.sent-last .sent-pause { visibility: hidden; }
+
+.pause-chips { display: flex; gap: 4px; }
+.pause-chip {
+  min-height: 30px; padding: 4px 8px;
+  border: 1px solid var(--border-strong); border-radius: 6px;
+  background: var(--surface); color: var(--text-muted);
+  font: inherit; font-size: 11.5px; cursor: pointer;
+  transition: background var(--dur-1) var(--ease-both), transform var(--dur-1) var(--ease-both);
+}
+.pause-chip:hover { background: var(--surface-3); color: var(--text); }
+.pause-chip:active { transform: scale(.94); }
+
+.line-icon {
+  flex: 0 0 auto;
+  display: grid; place-items: center;
+  width: 32px; height: 32px;
+  border: 1px solid transparent; border-radius: 7px;
+  background: transparent; color: var(--text-dim); cursor: pointer;
+  transition: background var(--dur-1) var(--ease-both), color var(--dur-1) var(--ease-both), transform var(--dur-1) var(--ease-both);
+}
+.line-icon:hover { background: var(--surface); color: var(--text); }
+.line-icon:active { transform: scale(.92); }
+.line-icon.is-on { color: var(--good); background: #e8f5ec; }
+.line-icon.danger:hover { background: var(--danger-soft); color: var(--danger); }
+
+.total-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-top: 10px; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--surface-2);
+  font-size: 13px; color: var(--text-muted);
+}
+.total-bar strong { font-family: var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------- pronunciation */
+
+.pron-list { display: grid; gap: 6px; margin-top: 10px; }
+.pron-row { display: flex; align-items: center; gap: 6px; }
+.pron-row input {
+  flex: 1 1 0; min-width: 0;
+  font: inherit; font-size: 14px; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: 6px; padding: 8px 9px; min-height: 40px;
+}
+.pron-row input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(67,56,202,.10); }
+.pron-arrow { flex: 0 0 auto; color: var(--text-dim); font-size: 13px; }
+
+/* ------------------------------------------------------------ responsive */
+
+@media (max-width: 639px) {
+  .voice-toggle, .mini-btn { min-height: 44px; }
+  .icon-btn { min-height: 44px; height: 44px; }
+  input[type="range"] { height: 44px; }
+  .sel-btn { min-height: 46px; }
+  .sel-opt { min-height: 46px; padding: 11px 10px; }
+  .reset-mini { padding: 12px 4px; min-height: 44px; }
+
+  /* On a phone a sentence gets two rows so nothing is squeezed. */
+  .sent { flex-wrap: wrap; row-gap: 6px; }
+  .sent-text { flex: 1 1 100%; order: 1; white-space: normal; }
+  .sent-num { order: 0; }
+  .line-icon { order: 0; width: 40px; height: 40px; }
+  .sent-est { order: 2; }
+  .sent-pause { order: 3; margin-left: auto; }
+  .sent-pause input { width: 74px; min-height: 40px; }
+  .pron-row { flex-wrap: wrap; }
+  .pron-row input { flex: 1 1 100%; }
+  .pron-arrow { display: none; }
+}
+@media (min-width: 640px) {
+  .actions { grid-auto-flow: column; grid-template-columns: 1fr auto auto; }
+  .result-actions { grid-auto-flow: column; grid-template-columns: 1fr auto; }
+  .controls { grid-template-columns: 1fr 1fr; align-items: end; }
+  .controls .full { grid-column: 1 / -1; }
+}
+@media (min-width: 1000px) {
+  .layout { grid-template-columns: 366px minmax(0, 1fr); gap: 20px; padding: 26px 24px 44px; }
+  .voices { position: sticky; top: 78px; }
+  .voice-toggle { display: none; }
+  .collapse > .collapse-inner { overflow: visible; }
+  .voice-list { max-height: min(50vh, 470px); }
+  .brand-text h1 { font-size: 17px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    transition-delay: 0s !important;
+  }
+  .progress::after { animation: none; width: 100%; opacity: .5; }
+  .spin { animation: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M3 12v1M7 8v8M11 4v16M15 8v8M19 11v2"/>
+      </svg>
+    </span>
+    <div class="brand-text">
+      <h1>Voiceover Studio</h1>
+      <p>Runs on this office computer.</p>
+    </div>
+  </div>
+  <div class="status-pill" id="serverPill" data-state="checking">
+    <span class="dot" aria-hidden="true"></span>
+    <span id="serverState">Checking</span>
+  </div>
+</header>
+
+<main class="layout">
+
+  <!-- ==================== VOICES ==================== -->
+  <section class="panel voices" aria-labelledby="voicesHeading">
+    <div class="panel-head">
+      <h2 id="voicesHeading">Voices</h2>
+      <span class="count" id="voiceCount"></span>
+      <button type="button" class="voice-toggle" id="voiceToggle" aria-expanded="false" aria-controls="voicePanelBody">
+        <span id="voiceToggleText">Show</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+    </div>
+
+    <div class="collapse" id="voicePanelBody">
+      <div class="collapse-inner">
+        <div class="panel-body">
+          <div class="filter-grid">
+            <div class="row">
+              <div class="field"><label id="lblFLang" for="fLang-btn">Language</label><div id="fLang"></div></div>
+              <div class="field"><label id="lblFGender" for="fGender-btn">Gender</label><div id="fGender"></div></div>
+            </div>
+            <div class="field"><label id="lblFTone" for="fTone-btn">Voice tone</label><div id="fTone"></div></div>
+            <div class="search-wrap">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+              <label class="sr-only" for="voiceSearch">Search voices by name</label>
+              <input type="search" id="voiceSearch" placeholder="Search by name" autocomplete="off">
+            </div>
+            <button type="button" class="mini-btn" id="resetFilters" hidden>Show every voice</button>
+          </div>
+
+          <div class="notice is-info" id="langNote" hidden>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
+            <span id="langNoteText"></span>
+          </div>
+
+          <div class="voice-list" id="voiceList" role="radiogroup" aria-label="Voices">
+            <p class="empty-note">Loading voices...</p>
+          </div>
+
+          <p class="hint hint-spaced">Press play on any voice to hear it. Voices are ordered by how much their pitch moves while speaking, most first, because flat voices are the ones that sound robotic.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== WORK AREA ==================== -->
+  <section class="panel work" aria-labelledby="scriptHeading">
+    <div class="panel-head"><h2 id="scriptHeading">Your script</h2></div>
+
+    <div class="panel-body">
+      <div class="field">
+        <label for="scriptText">Text to speak</label>
+        <textarea id="scriptText" placeholder="Paste or type the words you want spoken..." spellcheck="true"></textarea>
+        <div class="counter" id="counter"><span id="charCount">0 characters</span><span id="counterNote"></span></div>
+      </div>
+
+      <div class="sent-wrap" id="sentWrap" hidden>
+        <div class="control-head">
+          <span class="control-label">Pause after each sentence</span>
+          <button type="button" class="reset-mini" id="resetPauses">Back to normal</button>
+        </div>
+        <p class="hint">Your script split into sentences. Change the gap that follows any of
+          them, in milliseconds. 350 is a normal gap, 900 is a real beat, 0 runs straight on.</p>
+        <div class="sents" id="sents"></div>
+        <div class="total-bar">
+          <span id="lineSummary">No sentences yet</span>
+          <span>about <strong id="totalEst">0.0s</strong></span>
+        </div>
+      </div>
+
+      <div class="notice" id="fixNotice" hidden>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
+        <span id="fixNoticeText"></span>
+      </div>
+
+      <div class="controls">
+        <div class="control-row full">
+          <div class="control-head"><span class="control-label">Selected voice</span></div>
+          <div class="selected-voice">
+            <div class="sv-text">
+              <div class="sv-name" id="svName">No voice selected</div>
+              <div class="sv-meta" id="svMeta">Pick one from the Voices list</div>
+            </div>
+            <button type="button" class="icon-btn" id="svPreview" aria-label="Play sample of the selected voice" disabled>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.87l11-6.5a1 1 0 0 0 0-1.74l-11-6.5A1 1 0 0 0 8 5.5z"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="control-row full">
+          <div class="control-head">
+            <span class="control-label" id="lblStyle">Delivery style</span>
+            <button type="button" class="reset-mini" id="resetVoiceCtl">Back to the preset</button>
+          </div>
+          <div id="style"></div>
+          <p class="hint" id="styleHint"></p>
+        </div>
+
+        <div class="control-row">
+          <div class="control-head">
+            <label class="control-label" for="speed">Speed</label>
+            <span class="control-value" id="speedValue">1.00x</span>
+          </div>
+          <input type="range" id="speed" min="0.5" max="1.6" step="0.01" value="1">
+        </div>
+
+        <div class="control-row">
+          <div class="control-head">
+            <label class="control-label" for="pitch">Pitch</label>
+            <span class="control-value" id="pitchValue">0.0</span>
+          </div>
+          <input type="range" id="pitch" min="-6" max="6" step="0.5" value="0">
+          <p class="hint" id="pitchHint" hidden></p>
+        </div>
+
+        <div class="control-row">
+          <div class="control-head"><span class="control-label" id="lblPause">Pause length</span></div>
+          <div id="pause"></div>
+        </div>
+
+        <div class="control-row">
+          <div class="control-head"><span class="control-label" id="lblStress">Word stress</span></div>
+          <div id="stress"></div>
+        </div>
+
+        <div class="control-row full">
+          <div class="control-head"><span class="control-label" id="lblFormat">Audio file type</span></div>
+          <div id="format"></div>
+          <p class="hint" id="formatHint" hidden></p>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="control-row full">
+          <div class="control-head">
+            <span class="control-label" id="lblPron">How to say certain words</span>
+            <button type="button" class="reset-mini" id="addPronBtn">Add a word</button>
+          </div>
+          <p class="hint">If the voice says a name wrong, spell it here the way it should sound.
+            Applied to every line, every time. For example <strong>Calilio</strong> is read as
+            "KAL-ih-lee-oh" unless you fix it here.</p>
+          <div class="pron-list" id="pronList"></div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="btn btn-primary" id="generateBtn">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12v-1M9 12V7M13 12V4M17 12v-3M21 12v-2M3 16h18"/></svg>
+          <span id="generateLabel">Generate voiceover</span>
+        </button>
+        <button type="button" class="btn btn-secondary" id="cancelBtn" hidden>Cancel</button>
+        <button type="button" class="btn btn-secondary" id="resetAllBtn">Reset</button>
+      </div>
+      <p class="hint hint-tip">Tip: press Ctrl and Enter together to generate. Put <strong>*stars*</strong> around a word to make the voice stress it. <strong>Reset</strong> clears everything.</p>
+
+      <div class="status" id="status" hidden>
+        <span class="msg" id="statusMsg"></span>
+        <span class="elapsed" id="elapsed"></span>
+      </div>
+
+      <div class="result" id="result" hidden>
+        <h3>Your voiceover is ready</h3>
+        <p class="file-meta" id="fileMeta"></p>
+        <audio id="player" controls preload="metadata"></audio>
+        <div class="result-actions">
+          <a class="btn btn-download" id="downloadBtn" download href="#">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 20h16"/></svg>
+            Download audio file
+          </a>
+          <button type="button" class="btn btn-secondary" id="againBtn">Edit and redo</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p>Local only. Nothing is sent to the internet. Classic player: <a href="/web/">/web/</a> . Page version <span id="buildStamp">-</span></p>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  var API = window.location.origin;
+  var BUILD = "2026-08-07a";
+  var DEFAULT_VOICE = "af_heart";
+  var DEFAULT_PAUSE = 350;   // ms of silence placed after a line, matches the model's own tail
+
+  // The exact sentences every voice was timed on. Their length is what turns a
+  // voice's measured reading time into characters per second, which is what the
+  // duration estimate is built from.
+  var REF_TEXT = {
+    a: "We need this finished today, not tomorrow. Let me show you exactly how it works.",
+    b: "We need this finished today, not tomorrow. Let me show you exactly how it works.",
+    h: "हमें यह काम आज पूरा करना है, कल नहीं। मैं आपको दिखाता हूँ कि यह कैसे काम करता है।"
+  };
+
+  /* ------------------------------------------------------------------
+     Voice data. Every number here was measured on THIS server: each voice
+     read one identical sentence (an English one, or a Hindi one for the
+     Hindi voices) and the audio was analysed in the browser.
+       f0   = median pitch in Hz
+       mv   = pitch movement, semitones between the 10th and 90th percentile
+       secs = how long that voice took to read its sentence
+       vp   = percent of frames that were voiced (low = breathy / soft)
+     ------------------------------------------------------------------ */
+  var VOICE_DATA = [
+    /* American English */
+    { id: "af_heart",   name: "Heart",   lang: "a", g: "f", f0: 198, mv: 8.9,  secs: 4.70, vp: 52 },
+    { id: "af_bella",   name: "Bella",   lang: "a", g: "f", f0: 198, mv: 6.7,  secs: 4.99, vp: 51 },
+    { id: "af_nicole",  name: "Nicole",  lang: "a", g: "f", f0: 154, mv: 17.3, secs: 7.47, vp: 32 },
+    { id: "af_aoede",   name: "Aoede",   lang: "a", g: "f", f0: 173, mv: 17.7, secs: 4.61, vp: 67 },
+    { id: "af_kore",    name: "Kore",    lang: "a", g: "f", f0: 145, mv: 13.9, secs: 4.84, vp: 65 },
+    { id: "af_sarah",   name: "Sarah",   lang: "a", g: "f", f0: 189, mv: 10.4, secs: 4.66, vp: 57 },
+    { id: "af_sky",     name: "Sky",     lang: "a", g: "f", f0: 158, mv: 11.2, secs: 4.74, vp: 54 },
+    { id: "af_nova",    name: "Nova",    lang: "a", g: "f", f0: 160, mv: 7.3,  secs: 4.56, vp: 48 },
+    { id: "af_alloy",   name: "Alloy",   lang: "a", g: "f", f0: 147, mv: 7.6,  secs: 4.76, vp: 56 },
+    { id: "af_jessica", name: "Jessica", lang: "a", g: "f", f0: 200, mv: 8.8,  secs: 4.21, vp: 65 },
+    { id: "af_river",   name: "River",   lang: "a", g: "f", f0: 174, mv: 6.8,  secs: 4.42, vp: 64 },
+    { id: "af_jadzia",  name: "Jadzia",  lang: "a", g: "f", f0: 156, mv: 15.7, secs: 4.24, vp: 55 },
+    { id: "am_michael", name: "Michael", lang: "a", g: "m", f0: 114, mv: 9.6,  secs: 5.12, vp: 51 },
+    { id: "am_fenrir",  name: "Fenrir",  lang: "a", g: "m", f0: 134, mv: 12.5, secs: 4.83, vp: 61 },
+    { id: "am_puck",    name: "Puck",    lang: "a", g: "m", f0: 111, mv: 10.5, secs: 4.57, vp: 62 },
+    { id: "am_onyx",    name: "Onyx",    lang: "a", g: "m", f0: 88,  mv: 5.8,  secs: 4.60, vp: 58 },
+    { id: "am_echo",    name: "Echo",    lang: "a", g: "m", f0: 109, mv: 11.0, secs: 4.80, vp: 54 },
+    { id: "am_eric",    name: "Eric",    lang: "a", g: "m", f0: 156, mv: 11.7, secs: 4.40, vp: 67 },
+    { id: "am_liam",    name: "Liam",    lang: "a", g: "m", f0: 126, mv: 11.1, secs: 4.53, vp: 60 },
+    { id: "am_adam",    name: "Adam",    lang: "a", g: "m", f0: 118, mv: 10.2, secs: 4.53, vp: 60 },
+    { id: "am_santa",   name: "Santa",   lang: "a", g: "m", f0: 175, mv: 13.2, secs: 5.27, vp: 49 },
+    /* British English */
+    { id: "bf_emma",    name: "Emma",    lang: "b", g: "f", f0: 180, mv: 6.3,  secs: 4.62, vp: 56 },
+    { id: "bf_alice",   name: "Alice",   lang: "b", g: "f", f0: 218, mv: 10.3, secs: 4.78, vp: 61 },
+    { id: "bf_lily",    name: "Lily",    lang: "b", g: "f", f0: 180, mv: 10.0, secs: 4.74, vp: 60 },
+    { id: "bm_george",  name: "George",  lang: "b", g: "m", f0: 145, mv: 8.1,  secs: 5.38, vp: 64 },
+    { id: "bm_fable",   name: "Fable",   lang: "b", g: "m", f0: 118, mv: 12.0, secs: 4.92, vp: 45 },
+    { id: "bm_daniel",  name: "Daniel",  lang: "b", g: "m", f0: 125, mv: 7.3,  secs: 4.42, vp: 62 },
+    { id: "bm_lewis",   name: "Lewis",   lang: "b", g: "m", f0: 95,  mv: 10.3, secs: 5.23, vp: 46 },
+    /* Hindi */
+    { id: "hf_alpha",   name: "Alpha",   lang: "h", g: "f", f0: 203, mv: 9.6,  secs: 6.45, vp: 66 },
+    { id: "hf_beta",    name: "Beta",    lang: "h", g: "f", f0: 179, mv: 10.1, secs: 5.92, vp: 67 },
+    { id: "hm_omega",   name: "Omega",   lang: "h", g: "m", f0: 129, mv: 11.3, secs: 6.86, vp: 61 },
+    { id: "hm_psi",     name: "Psi",     lang: "h", g: "m", f0: 134, mv: 12.8, secs: 6.86, vp: 56 },
+    /* Older English voices, kept out of the way behind the language filter */
+    { id: "af_v0",         name: "Original",  lang: "a", g: "f", f0: 245, mv: 9.2,  secs: 4.55, vp: 56, old: 1 },
+    { id: "af_v0bella",    name: "Bella",     lang: "a", g: "f", f0: 247, mv: 8.6,  secs: 4.86, vp: 51, old: 1 },
+    { id: "af_v0irulan",   name: "Irulan",    lang: "a", g: "f", f0: 300, mv: 9.7,  secs: 4.71, vp: 52, old: 1 },
+    { id: "af_v0nicole",   name: "Nicole",    lang: "a", g: "f", f0: 164, mv: 16.2, secs: 6.90, vp: 32, old: 1 },
+    { id: "af_v0sarah",    name: "Sarah",     lang: "a", g: "f", f0: 235, mv: 11.2, secs: 4.25, vp: 59, old: 1 },
+    { id: "af_v0sky",      name: "Sky",       lang: "a", g: "f", f0: 174, mv: 12.0, secs: 4.15, vp: 44, old: 1 },
+    { id: "am_v0adam",     name: "Adam",      lang: "a", g: "m", f0: 121, mv: 9.3,  secs: 4.13, vp: 59, old: 1 },
+    { id: "am_v0gurney",   name: "Gurney",    lang: "a", g: "m", f0: 71,  mv: 9.1,  secs: 6.19, vp: 34, old: 1 },
+    { id: "am_v0michael",  name: "Michael",   lang: "a", g: "m", f0: 121, mv: 9.4,  secs: 5.00, vp: 43, old: 1 },
+    { id: "bf_v0emma",     name: "Emma",      lang: "b", g: "f", f0: 211, mv: 6.6,  secs: 4.23, vp: 55, old: 1 },
+    { id: "bf_v0isabella", name: "Isabella",  lang: "b", g: "f", f0: 233, mv: 6.2,  secs: 4.55, vp: 56, old: 1 },
+    { id: "bm_v0george",   name: "George",    lang: "b", g: "m", f0: 161, mv: 10.6, secs: 4.96, vp: 61, old: 1 },
+    { id: "bm_v0lewis",    name: "Lewis",     lang: "b", g: "m", f0: 96,  mv: 10.0, secs: 4.76, vp: 38, old: 1 }
+  ];
+
+  var LANG_LABEL = { a: "American", b: "British", h: "Hindi" };
+
+  var SAMPLE_TEXT = {
+    en: "Here is how I sound. I can read your script clearly, and put the stress where it belongs.",
+    hi: "मैं ऐसी सुनाई देती हूँ। मैं आपकी स्क्रिप्ट साफ़ पढ़ सकती हूँ।",
+    ne: "म यस्तो सुनिन्छु। म तपाईंको स्क्रिप्ट स्पष्ट सँग पढ्न सक्छु।"
+  };
+
+  /* Language filter. "ne" is not a Kokoro language, see the note it shows. */
+  var LANG_OPTS = [
+    { value: "en", label: "All English",       desc: "American and British" },
+    { value: "a",  label: "American English",  desc: "" },
+    { value: "b",  label: "British English",   desc: "" },
+    { value: "h",  label: "Hindi",             desc: "Write the script in Devanagari" },
+    { value: "ne", label: "Nepali",            desc: "Read by a Hindi voice, see the note" },
+    { value: "old", label: "Older English voices", desc: "13 extra voices from the earlier model" },
+    { value: "all", label: "Every voice",      desc: "All 45" }
+  ];
+
+  var LANG_NOTES = {
+    ne: "Kokoro has no Nepali voice. These are the Hindi voices. Write your script in Devanagari and they will read it, but with Hindi pronunciation and a Hindi accent, so some Nepali words will come out wrong. Play a sample and judge it before you commit to a long script.",
+    h: "Write your script in Devanagari for these voices. English text will be read letter by letter.",
+    old: "These come from the earlier version of the model. They are kept because they sound different, not because they are better. The newer voices are usually cleaner."
+  };
+
+  var STYLES = [
+    { id: "natural",        label: "Natural",        desc: "Everyday, relaxed",        speed: 1.00, pitch: 0, pause: "light",  emph: "medium",
+      hint: "Normal pace, light pausing. Good default for most videos." },
+    { id: "conversational", label: "Conversational", desc: "Quick and friendly",       speed: 1.06, pitch: 0, pause: "light",  emph: "light",
+      hint: "Slightly faster, fewer pauses. Suits social clips and vlogs." },
+    { id: "professional",   label: "Professional",   desc: "Clean corporate read",     speed: 0.96, pitch: 0, pause: "medium", emph: "medium",
+      hint: "A touch slower with more breathing room. Suits explainers and demos." },
+    { id: "formal",         label: "Formal",         desc: "Slow and deliberate",      speed: 0.90, pitch: 0, pause: "strong", emph: "strong",
+      hint: "Slowest, long pauses, strong stress. Suits announcements." },
+    { id: "narration",      label: "Narration",      desc: "Documentary style",        speed: 0.92, pitch: 0, pause: "strong", emph: "medium",
+      hint: "Slow with long pauses between clauses. Suits voiceover over footage." },
+    { id: "energetic",      label: "Energetic",      desc: "Upbeat promo",             speed: 1.12, pitch: 0, pause: "light",  emph: "strong",
+      hint: "Fast and punchy with hard stress. Suits ads and trailers." },
+    { id: "custom",         label: "Custom",         desc: "Your own settings",        speed: 1.00, pitch: 0, pause: "light",  emph: "medium",
+      hint: "You are driving. Change speed, pitch, pauses and stress however you like." }
+  ];
+
+  var PAUSE_OPTS = [
+    { value: "none",   label: "None",   desc: "Read the punctuation as written" },
+    { value: "light",  label: "Light",  desc: "Break sentences over 16 words" },
+    { value: "medium", label: "Medium", desc: "Break sentences over 12 words" },
+    { value: "strong", label: "Long",   desc: "Break sentences over 9 words, longer gaps" }
+  ];
+  var STRESS_OPTS = [
+    { value: "light",  label: "Light",  desc: "Small beat before a *starred* word" },
+    { value: "medium", label: "Medium", desc: "A beat on each side of it" },
+    { value: "strong", label: "Strong", desc: "Long pause in front of it" }
+  ];
+  var FORMAT_OPTS = [
+    { value: "wav",  label: "WAV",  desc: "Best quality, for video editing" },
+    { value: "mp3",  label: "MP3",  desc: "Smaller file, for sharing" },
+    { value: "flac", label: "FLAC", desc: "Lossless, smaller than WAV" },
+    { value: "opus", label: "OPUS", desc: "Smallest file" }
+  ];
+  var GENDER_OPTS = [
+    { value: "all", label: "All", desc: "" },
+    { value: "f",   label: "Female", desc: "" },
+    { value: "m",   label: "Male", desc: "" }
+  ];
+  var TONE_OPTS = [
+    { value: "all",        label: "All tones",  desc: "" },
+    { value: "expressive", label: "Expressive", desc: "Most life and pitch movement" },
+    { value: "balanced",   label: "Balanced",   desc: "Steady but not flat" },
+    { value: "even",       label: "Even",       desc: "Very level, little movement" },
+    { value: "deep",       label: "Deep",       desc: "Low pitched" },
+    { value: "warm",       label: "Warm",       desc: "Low to mid pitched" },
+    { value: "clear",      label: "Clear",      desc: "Mid pitched" },
+    { value: "bright",     label: "Bright",     desc: "Higher pitched" },
+    { value: "soft",       label: "Soft",       desc: "Quiet and breathy" },
+    { value: "measured",   label: "Measured",   desc: "Speaks slower than the rest" },
+    { value: "brisk",      label: "Brisk",      desc: "Speaks faster than the rest" }
+  ];
+
+  var EXT = { wav: "wav", mp3: "mp3", flac: "flac", opus: "opus" };
+  var WARN_CHARS = 3000;
+
+  var ICON_PLAY = '<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.87l11-6.5a1 1 0 0 0 0-1.74l-11-6.5A1 1 0 0 0 8 5.5z"/></svg>';
+  var ICON_STOP = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg>';
+  var ICON_LOAD = '<svg class="spin" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"/></svg>';
+  var ICON_TICK = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12.5l5.5 5.5L20 6.5"/></svg>';
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  var state = {
+    voices: [], selected: null,
+    sampleCache: {}, previewVoice: null, previewCtl: null,
+    genCtl: null, resultUrl: null, timer: null, openSelect: null,
+    pauses: {}, pron: [],
+    linePreview: null, lineLoading: null, linePreviewCtl: null, linePreviewUrl: null
+  };
+
+  var MAX_LINES = 400;
+
+  var lineAudio = new Audio();
+  lineAudio.preload = "auto";
+
+  var sampleAudio = new Audio();
+  sampleAudio.preload = "auto";
+
+  /* ============================================================ dropdowns */
+
+  function Select(hostId, opts, initial, onChange) {
+    var host = $(hostId);
+    var value = initial;
+
+    var wrap = document.createElement("div");
+    wrap.className = "sel";
+
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "sel-btn";
+    btn.id = hostId + "-btn";
+    btn.setAttribute("role", "combobox");
+    btn.setAttribute("aria-haspopup", "listbox");
+    btn.setAttribute("aria-expanded", "false");
+    btn.setAttribute("aria-controls", hostId + "-list");
+    var lbl = document.getElementById("lbl" + hostId.charAt(0).toUpperCase() + hostId.slice(1));
+    if (lbl) { btn.setAttribute("aria-labelledby", lbl.id + " " + btn.id); }
+
+    var valueEl = document.createElement("span");
+    valueEl.className = "sel-value";
+    btn.appendChild(valueEl);
+
+    var caret = document.createElement("span");
+    caret.className = "sel-caret";
+    caret.setAttribute("aria-hidden", "true");
+    caret.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+    btn.appendChild(caret);
+
+    var list = document.createElement("ul");
+    list.className = "sel-list";
+    list.id = hostId + "-list";
+    list.setAttribute("role", "listbox");
+    list.tabIndex = -1;
+
+    var items = [];
+    opts.forEach(function (o, i) {
+      var li = document.createElement("li");
+      li.className = "sel-opt";
+      li.id = hostId + "-opt-" + i;
+      li.setAttribute("role", "option");
+      li.setAttribute("data-value", o.value);
+      li.style.setProperty("--i", String(i));
+
+      var tick = document.createElement("span");
+      tick.className = "sel-opt-tick";
+      tick.setAttribute("aria-hidden", "true");
+      tick.innerHTML = ICON_TICK;
+
+      var txt = document.createElement("span");
+      txt.className = "sel-opt-text";
+      var l = document.createElement("span");
+      l.className = "sel-opt-label";
+      l.textContent = o.label;
+      txt.appendChild(l);
+      if (o.desc) {
+        var d = document.createElement("span");
+        d.className = "sel-opt-desc";
+        d.textContent = o.desc;
+        txt.appendChild(d);
+      }
+      li.appendChild(tick);
+      li.appendChild(txt);
+      list.appendChild(li);
+      items.push({ el: li, opt: o });
+    });
+
+    wrap.appendChild(btn);
+    wrap.appendChild(list);
+    host.appendChild(wrap);
+
+    var activeIdx = 0;
+    var typed = "", typedAt = 0;
+
+    function indexOfValue(v) {
+      for (var i = 0; i < items.length; i++) { if (items[i].opt.value === v) { return i; } }
+      return 0;
+    }
+
+    function paint() {
+      items.forEach(function (it) {
+        var on = it.opt.value === value;
+        it.el.setAttribute("aria-selected", on ? "true" : "false");
+      });
+      valueEl.textContent = (items[indexOfValue(value)] || items[0]).opt.label;
+    }
+
+    function setActive(i) {
+      activeIdx = Math.max(0, Math.min(items.length - 1, i));
+      items.forEach(function (it, n) { it.el.classList.toggle("is-active", n === activeIdx); });
+      list.setAttribute("aria-activedescendant", items[activeIdx].el.id);
+      btn.setAttribute("aria-activedescendant", items[activeIdx].el.id);
+      var el = items[activeIdx].el;
+      var top = el.offsetTop, bottom = top + el.offsetHeight;
+      if (top < list.scrollTop) { list.scrollTop = top - 4; }
+      else if (bottom > list.scrollTop + list.clientHeight) { list.scrollTop = bottom - list.clientHeight + 4; }
+    }
+
+    function open() {
+      if (state.openSelect && state.openSelect !== api) { state.openSelect.close(true); }
+      state.openSelect = api;
+      wrap.classList.add("is-open");
+      btn.setAttribute("aria-expanded", "true");
+      setActive(indexOfValue(value));
+      // The menu can be wider than its button, so flip it if it would run off
+      // the right edge of the screen.
+      list.classList.remove("align-right");
+      if (list.getBoundingClientRect().right > window.innerWidth - 10) {
+        list.classList.add("align-right");
+      }
+    }
+
+    function close(silent) {
+      wrap.classList.remove("is-open");
+      btn.setAttribute("aria-expanded", "false");
+      if (state.openSelect === api) { state.openSelect = null; }
+      if (!silent) { btn.focus(); }
+    }
+
+    function isOpen() { return wrap.classList.contains("is-open"); }
+
+    function pick(i, fromUser) {
+      var v = items[i].opt.value;
+      var changed = v !== value;
+      value = v;
+      paint();
+      close(!fromUser);
+      if (changed && onChange) { onChange(v); }
+    }
+
+    btn.addEventListener("click", function () { isOpen() ? close(true) : open(); });
+
+    btn.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        if (!isOpen()) { open(); }
+        else if (e.key === "Enter" || e.key === " ") { pick(activeIdx, true); }
+        else { setActive(activeIdx + (e.key === "ArrowDown" ? 1 : -1)); }
+        return;
+      }
+      if (e.key === "Escape" && isOpen()) { e.preventDefault(); close(); return; }
+      if (e.key === "Home" && isOpen()) { e.preventDefault(); setActive(0); return; }
+      if (e.key === "End" && isOpen()) { e.preventDefault(); setActive(items.length - 1); return; }
+      if (e.key.length === 1 && /\S/.test(e.key)) {
+        var now = Date.now();
+        typed = (now - typedAt < 700) ? typed + e.key.toLowerCase() : e.key.toLowerCase();
+        typedAt = now;
+        for (var i = 0; i < items.length; i++) {
+          if (items[i].opt.label.toLowerCase().indexOf(typed) === 0) {
+            if (!isOpen()) { pick(i, true); } else { setActive(i); }
+            break;
+          }
+        }
+      }
+    });
+
+    list.addEventListener("mousemove", function (e) {
+      var li = e.target.closest ? e.target.closest(".sel-opt") : null;
+      if (li) { setActive(items.findIndex(function (it) { return it.el === li; })); }
+    });
+
+    list.addEventListener("click", function (e) {
+      var li = e.target.closest ? e.target.closest(".sel-opt") : null;
+      if (!li) { return; }
+      pick(items.findIndex(function (it) { return it.el === li; }), true);
+    });
+
+    var api = {
+      get: function () { return value; },
+      set: function (v, fire) {
+        var changed = v !== value;
+        value = v; paint();
+        if (fire && changed && onChange) { onChange(v); }
+      },
+      close: close,
+      isOpen: isOpen,
+      contains: function (n) { return wrap.contains(n); }
+    };
+
+    paint();
+    return api;
+  }
+
+  document.addEventListener("mousedown", function (e) {
+    if (state.openSelect && !state.openSelect.contains(e.target)) { state.openSelect.close(true); }
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && state.openSelect) { state.openSelect.close(); }
+  });
+
+  /* ======================================================= voice metadata */
+
+  var TAG_WORD = {
+    deep: "Deep", warm: "Warm", clear: "Clear", bright: "Bright",
+    expressive: "Expressive", balanced: "Balanced", even: "Even",
+    soft: "Soft", measured: "Measured", brisk: "Brisk"
+  };
+
+  function median(arr) {
+    var a = arr.slice().sort(function (x, y) { return x - y; });
+    var m = Math.floor(a.length / 2);
+    return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+  }
+
+  function buildVoices() {
+    // Reading time only means something inside its own language group, because
+    // the Hindi sentence is longer than the English one.
+    var groups = {};
+    VOICE_DATA.forEach(function (v) {
+      var k = v.lang + (v.old ? "-old" : "");
+      (groups[k] = groups[k] || []).push(v.secs);
+    });
+    var mid = {};
+    for (var k in groups) { mid[k] = median(groups[k]); }
+
+    state.voices = VOICE_DATA.map(function (v) {
+      var o = {};
+      for (var key in v) { o[key] = v[key]; }
+      var m = mid[v.lang + (v.old ? "-old" : "")];
+
+      var tags = [];
+      if (v.f0 < 120) { tags.push("deep"); }
+      else if (v.f0 < 160) { tags.push("warm"); }
+      else if (v.f0 < 185) { tags.push("clear"); }
+      else { tags.push("bright"); }
+
+      if (v.mv >= 12) { tags.push("expressive"); }
+      else if (v.mv >= 8) { tags.push("balanced"); }
+      else { tags.push("even"); }
+
+      if (v.vp < 50) { tags.push("soft"); }
+      if (v.secs > m * 1.06) { tags.push("measured"); }
+      else if (v.secs < m * 0.94) { tags.push("brisk"); }
+
+      o.tags = tags;
+      o.outlier = (v.secs > m * 1.12) || (v.vp < 50);
+      var parts = [TAG_WORD[tags[0]].toLowerCase(), TAG_WORD[tags[1]].toLowerCase()];
+      if (tags[2]) { parts.push(TAG_WORD[tags[2]].toLowerCase()); }
+      o.desc = LANG_LABEL[v.lang] + " " + (v.g === "f" ? "female" : "male") + " . " + parts.join(", ");
+      o.search = (v.name + " " + v.id).toLowerCase();
+      return o;
+    });
+
+    state.voices.sort(function (a, b) {
+      if (!!a.old !== !!b.old) { return a.old ? 1 : -1; }
+      var ao = a.outlier ? 1 : 0, bo = b.outlier ? 1 : 0;
+      if (ao !== bo) { return ao - bo; }
+      return b.mv - a.mv;
+    });
+  }
+
+  function sampleFor(v) {
+    if (v.lang !== "h") { return SAMPLE_TEXT.en; }
+    return controls.lang.get() === "ne" ? SAMPLE_TEXT.ne : SAMPLE_TEXT.hi;
+  }
+
+  /* ================================================ script -> speech text */
+
+  var CONNECTIVES = /\s+(and|but|so|because|which|while|when|although|however|therefore|then)\s+/gi;
+
+  function tidy(t) {
+    return t
+      .replace(/[ \t]+/g, " ")
+      .replace(/\s*\.\s*\.\s*\.\s*/g, "... ")
+      .replace(/\s+([,.;:!?])/g, "$1")
+      .replace(/,\s*,+/g, ",")
+      .replace(/,\s*\.\.\./g, "...")
+      .replace(/\.\.\.\s*,/g, "... ")
+      .replace(/([^.])\.\s*\.(?!\.)/g, "$1.")
+      .replace(/,\s*([.!?])/g, "$1")
+      .replace(/^[,;:.\s]+/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  // Emphasis is pause punctuation, not volume. A beat in front of a word is
+  // what makes the model land the stress on it. Measured on this server:
+  // a comma adds about 0.18s, "..." adds about 0.39s.
+  function applyEmphasis(line, level) {
+    return line.replace(/\*([^*\n]+)\*/g, function (whole, inner) {
+      var w = inner.trim();
+      if (!w) { return whole; }
+      if (level === "strong") { return "... " + w + ", "; }
+      if (level === "medium") { return ", " + w + ", "; }
+      return ", " + w + " ";
+    }).replace(/\*/g, "");
+  }
+
+  function applyPacing(line, level) {
+    if (level === "none") { return line; }
+    var limit = level === "strong" ? 9 : (level === "medium" ? 12 : 16);
+    var mark = level === "strong" ? "... " : ", ";
+    if (line.split(/\s+/).length <= limit) { return line; }
+    return line.replace(CONNECTIVES, function (whole, word, offset, full) {
+      var before = full.charAt(offset - 1);
+      if (before === "," || before === "." || before === ";" || before === ":") { return whole; }
+      return mark + word + " ";
+    });
+  }
+
+  // Swaps in the pronunciation spellings before anything else touches the text.
+  // Whole words only, so "Calilio" does not also rewrite "Calilios".
+  //
+  // The edge class has to include combining marks and the zero width joiners,
+  // not just letters and digits. In Devanagari a vowel sign is a mark, so a
+  // rule for राम would otherwise also fire inside रामा and leave the trailing
+  // matra stranded on the replacement.
+  var PRON_EDGE = "\\p{L}\\p{N}\\p{M}\\u200c\\u200d";
+  var pronRx = [];
+
+  // Built once per change instead of once per keystroke per rule.
+  function rebuildPronRx() {
+    pronRx = [];
+    state.pron.forEach(function (p) {
+      var from = (p.from || "").trim();
+      var to = (p.to || "").trim();
+      if (!from || !to) { return; }
+      var esc = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      try {
+        pronRx.push({
+          rx: new RegExp("(^|[^" + PRON_EDGE + "])" + esc + "(?![" + PRON_EDGE + "])", "giu"),
+          to: to
+        });
+      } catch (e) { /* a rule we cannot compile is simply skipped */ }
+    });
+  }
+
+  function applyPron(text) {
+    var out = text;
+    for (var i = 0; i < pronRx.length; i++) {
+      var to = pronRx[i].to;
+      out = out.replace(pronRx[i].rx, function (m, pre) { return pre + to; });
+    }
+    return out;
+  }
+
+  // One line of script, ready to send. Returns "" when there is nothing to say.
+  function buildOneLine(raw, pause, emph) {
+    var t = String(raw).replace(/\s+/g, " ").trim();
+    if (!t) { return { text: "", addedStop: false, starred: 0 }; }
+    var starred = (t.match(/\*[^*\n]+\*/g) || []).length;
+    t = applyPron(t);
+    t = tidy(applyPacing(applyEmphasis(t, emph), pause));
+    if (!t) { return { text: "", addedStop: false, starred: starred }; }
+    var addedStop = false;
+    if (!/[.!?]$/.test(t)) { t = t.replace(/[,;:]+$/, "") + "."; addedStop = true; }
+    return { text: t, addedStop: addedStop, starred: starred };
+  }
+
+  function buildSpeechText(raw, pause, emph) {
+    var lines = String(raw).replace(/\r\n?/g, "\n").split("\n");
+    var out = [], addedStops = 0, starred = 0;
+    lines.forEach(function (line) {
+      var b = buildOneLine(line, pause, emph);
+      if (!b.text) { return; }
+      if (b.addedStop) { addedStops++; }
+      starred += b.starred;
+      out.push(b.text);
+    });
+    return { text: out.join("\n"), addedStops: addedStops, starred: starred };
+  }
+
+  /* ================================================== lines: data model */
+
+  // A number typed into an <input type="number"> is NOT limited by min and max.
+  // Without these, speed 0 makes the estimate Infinity and a pitch of -60 asks
+  // the browser to render a buffer 180 times the source, which locks the tab.
+  function clampPitch(n) { return Math.max(-6, Math.min(6, n)); }
+  function clampSpeed(n) { return Math.max(0.5, Math.min(1.6, n)); }
+  function clampPause(n) { return Math.max(0, Math.min(5000, Math.round(n))); }
+
+  function voiceById(id) {
+    for (var i = 0; i < state.voices.length; i++) { if (state.voices[i].id === id) { return state.voices[i]; } }
+    return null;
+  }
+
+  // The script box is the only thing the user edits. Sentences are derived from
+  // it every time it changes, and a pause is remembered against the sentence's
+  // own text, so editing one sentence does not shuffle everyone else's pause.
+  function sentKey(text) { return text.replace(/\s+/g, " ").trim().toLowerCase(); }
+
+  function pauseFor(text) {
+    var v = state.pauses[sentKey(text)];
+    return typeof v === "number" ? clampPause(v) : DEFAULT_PAUSE;
+  }
+
+  function setPauseFor(text, ms) {
+    var k = sentKey(text);
+    if (ms === DEFAULT_PAUSE) { delete state.pauses[k]; }
+    else { state.pauses[k] = clampPause(ms); }
+    savePauses();
+  }
+
+  function resolveSentence() {
+    var g = globals();
+    return { voice: g.voice, pitch: clampPitch(g.pitch), speed: clampSpeed(g.speed) };
+  }
+
+  function globals() {
+    return {
+      voice: state.selected ? state.selected.id : DEFAULT_VOICE,
+      pitch: parseFloat($("pitch").value) || 0,
+      speed: parseFloat($("speed").value) || 1,
+      pause: controls.pause.get(),
+      stress: controls.stress.get()
+    };
+  }
+
+  function splitIntoLines(raw) {
+    var out = [];
+    String(raw).replace(/\r\n?/g, "\n").split("\n").forEach(function (block) {
+      var b = block.trim();
+      if (!b) { return; }
+      // Keep the terminator on the sentence it belongs to.
+      var parts = b.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g) || [b];
+      parts.forEach(function (p) {
+        var t = p.trim();
+        if (t) { out.push(t); }
+      });
+    });
+    return out;
+  }
+
+  /* ================================================== lines: estimating */
+
+  // Characters per second for a voice at 1.0x, straight from the timing run.
+  // The timing includes the silence the model puts at each end of a clip.
+  function charsPerSecond(voice) {
+    var ref = REF_TEXT[voice.lang] || REF_TEXT.a;
+    return ref.length / voice.secs;
+  }
+
+  // The joiner trims the silence the model puts at each end, so that has to
+  // come out of the estimate too. Measured directly across 6 sentences and 4
+  // voices by comparing the linear prediction against the trimmed length: the
+  // implied gap was 0.16, 0.34, 0.18, 0.45, 0.14 and -0.12, median 0.18.
+  // The first guess of 0.40 came from the raw head and tail silence and made
+  // every estimate read short.
+  var TRIM_PAD = 0.18;
+
+  function estimateFromBuilt(builtText, r) {
+    var v = voiceById(r.voice);
+    if (!v || !builtText) { return 0; }
+    var raw = builtText.length / (charsPerSecond(v) * r.speed);
+    return Math.max(0.15, raw - TRIM_PAD);
+  }
+
+  // One pass over the script that produces everything the page needs to show.
+  // Doing it once per readout made every keystroke rebuild the text three times.
+  function scanScript() {
+    var raw = $("scriptText").value;
+    var g = globals();
+    var r = resolveSentence();
+    var parts = splitIntoLines(raw).slice(0, MAX_LINES);
+    var rows = [], speech = 0;
+
+    parts.forEach(function (text) {
+      var built = buildOneLine(text, g.pause, g.stress);
+      var secs = estimateFromBuilt(built.text, r);
+      if (secs > 0) { speech += secs; }
+      rows.push({ text: text, built: built, secs: secs, pause: pauseFor(text) });
+    });
+
+    var spoken = rows.filter(function (x) { return x.built.text; });
+    var gaps = 0;
+    // The last sentence's pause produces no gap, nothing follows it.
+    for (var i = 0; i < spoken.length - 1; i++) { gaps += spoken[i].pause / 1000; }
+
+    var stops = 0, starred = 0;
+    rows.forEach(function (x) { if (x.built.addedStop) { stops++; } starred += x.built.starred; });
+
+    return { rows: rows, spoken: spoken, secs: speech + gaps, chars: raw.length,
+             stops: stops, starred: starred };
+  }
+
+  function fmtSecs(s) {
+    if (s < 60) { return s.toFixed(1) + "s"; }
+    var m = Math.floor(s / 60);
+    return m + "m " + Math.round(s - m * 60) + "s";
+  }
+
+  /* =============================================== audio buffer helpers */
+
+  var audioCtx = null;
+  function ctx() {
+    if (!audioCtx) {
+      var C = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new C({ sampleRate: 24000 });
+    }
+    return audioCtx;
+  }
+
+  function blobToBuffer(blob) {
+    return blob.arrayBuffer().then(function (ab) { return ctx().decodeAudioData(ab); });
+  }
+
+  // Resampling is the only pitch control available, see the note on the pitch
+  // slider. Ratio above 1 raises the pitch and shortens the audio.
+  function resampleBuffer(buf, ratio) {
+    if (!ratio || ratio === 1) { return Promise.resolve(buf); }
+    var off = new OfflineAudioContext(buf.numberOfChannels, Math.max(1, Math.ceil(buf.length / ratio)), buf.sampleRate);
+    var src = off.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = ratio;
+    src.connect(off.destination);
+    src.start();
+    return off.startRendering();
+  }
+
+  // Where the actual speech starts and stops, so the model's own leading and
+  // trailing silence does not fight the pause the user asked for.
+  function speechBounds(buf, thresh) {
+    var d = buf.getChannelData(0);
+    var a = 0, b = d.length - 1;
+    var t = thresh || 0.004;
+    while (a < d.length && Math.abs(d[a]) < t) { a++; }
+    while (b > a && Math.abs(d[b]) < t) { b--; }
+    if (b <= a) { return { start: 0, end: d.length - 1 }; }
+    // Leave a few milliseconds so nothing is clipped off the consonants.
+    var pad = Math.round(buf.sampleRate * 0.02);
+    return { start: Math.max(0, a - pad), end: Math.min(d.length - 1, b + pad) };
+  }
+
+  function joinBuffers(pieces) {
+    var sr = 24000, total = 0, i;
+    for (i = 0; i < pieces.length; i++) {
+      total += (pieces[i].end - pieces[i].start + 1) + pieces[i].gapSamples;
+    }
+    if (total <= 0) { return null; }
+    var out = ctx().createBuffer(1, total, sr);
+    var o = out.getChannelData(0);
+    var w = 0;
+    for (i = 0; i < pieces.length; i++) {
+      var p = pieces[i], d = p.buf.getChannelData(0);
+      for (var k = p.start; k <= p.end; k++) { o[w++] = d[k]; }
+      w += p.gapSamples;
+    }
+    return out;
+  }
+
+  /* ============================================================ lines: UI */
+
+  var ICON_PLAY_SM = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.87l11-6.5a1 1 0 0 0 0-1.74l-11-6.5A1 1 0 0 0 8 5.5z"/></svg>';
+  var ICON_STOP_SM = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg>';
+  var ICON_LOAD_SM = '<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"/></svg>';
+  var ICON_X = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  // Rebuilds the sentence strip. Called only when the sentence list itself
+  // changes, not on every keystroke, or the pause boxes would lose focus.
+  function renderSents(scan) {
+    var host = $("sents");
+    host.innerHTML = "";
+    var spokenCount = scan.spoken.length;
+    var seen = 0;
+
+    scan.rows.forEach(function (row, i) {
+      var isSpoken = !!row.built.text;
+      if (isSpoken) { seen++; }
+      var isLast = isSpoken && seen === spokenCount;
+      var el = document.createElement("div");
+      el.className = "sent" + (isLast ? " sent-last" : "") + (row.pause !== DEFAULT_PAUSE ? " is-set" : "");
+      el.setAttribute("data-i", String(i));
+      el.innerHTML =
+        '<span class="sent-num">' + (i + 1) + '</span>' +
+        '<button type="button" class="line-icon" data-act="play" aria-label="Hear sentence ' + (i + 1) + '">' + ICON_PLAY_SM + '</button>' +
+        '<span class="sent-text" title="' + esc(row.text) + '">' + esc(row.text) + '</span>' +
+        '<span class="sent-est" data-est>' + (row.secs > 0 ? "~" + row.secs.toFixed(1) + "s" : "") + '</span>' +
+        '<label class="sent-pause">pause ' +
+          '<input type="number" data-act="pause" min="0" max="5000" step="50" value="' + row.pause + '"' +
+          (row.pause !== DEFAULT_PAUSE ? ' class="is-set"' : '') +
+          ' aria-label="Pause after sentence ' + (i + 1) + ' in milliseconds"></label>' +
+        '<span class="pause-chips">' +
+          '<button type="button" class="pause-chip" data-set="0">none</button>' +
+          '<button type="button" class="pause-chip" data-set="700">beat</button>' +
+          '<button type="button" class="pause-chip" data-set="1200">long</button>' +
+        '</span>';
+      host.appendChild(el);
+    });
+
+    $("sentWrap").hidden = scan.rows.length === 0;
+  }
+
+  function sentTextAt(i) {
+    var parts = splitIntoLines($("scriptText").value).slice(0, MAX_LINES);
+    return parts[i] || "";
+  }
+
+  var saveTimer = null;
+  var lastSentSig = null;
+
+  function refreshEstimates(force) {
+    var scan = scanScript();
+
+    // Only rebuild the strip when the sentences themselves changed, so typing
+    // in the script box never yanks focus out of a pause box.
+    var sig = scan.rows.map(function (r) { return r.text; }).join("");
+    if (force || sig !== lastSentSig) {
+      lastSentSig = sig;
+      renderSents(scan);
+    } else {
+      var ests = document.querySelectorAll("#sents [data-est]");
+      for (var i = 0; i < ests.length; i++) {
+        var info = scan.rows[i];
+        if (info) { ests[i].textContent = info.secs > 0 ? "~" + info.secs.toFixed(1) + "s" : ""; }
+      }
+    }
+
+    $("totalEst").textContent = fmtSecs(scan.secs);
+    $("lineSummary").textContent = scan.spoken.length === 0
+      ? "No sentences yet"
+      : scan.spoken.length + (scan.spoken.length === 1 ? " sentence" : " sentences");
+
+    $("charCount").textContent = scan.chars.toLocaleString() + (scan.chars === 1 ? " character" : " characters");
+    var warn = scan.chars > WARN_CHARS;
+    $("counter").classList.toggle("is-warn", warn);
+    $("counterNote").textContent = warn ? "Long script. This can take several minutes." : "";
+
+    var msgs = [];
+    if (scan.stops) {
+      msgs.push("A full stop was added to the end of " + scan.stops + (scan.stops === 1 ? " sentence" : " sentences") +
+        ". Without it this server cuts the audio short and you lose words.");
+    }
+    if (scan.starred) {
+      msgs.push(scan.starred + (scan.starred === 1 ? " word has" : " words have") +
+        " stars around them, so a pause goes in front of each one and the voice lands on it.");
+    }
+    $("fixNotice").hidden = msgs.length === 0;
+    $("fixNoticeText").textContent = msgs.join(" ");
+
+    if (saveTimer) { clearTimeout(saveTimer); }
+    saveTimer = setTimeout(function () { save("kvs.text", $("scriptText").value); }, 400);
+  }
+
+  /* ========================================================= line preview */
+
+  function setLineIcon(i, mode) {
+    var row = document.querySelector('.sent[data-i="' + i + '"]');
+    if (!row) { return; }
+    var btn = row.querySelector('[data-act="play"]');
+    row.classList.toggle("is-playing", mode === "playing");
+    btn.classList.toggle("is-on", mode === "playing");
+    btn.innerHTML = mode === "loading" ? ICON_LOAD_SM : (mode === "playing" ? ICON_STOP_SM : ICON_PLAY_SM);
+  }
+
+  // Track the loading row separately from the playing row, or a row abandoned
+  // while it was still fetching keeps its spinner forever.
+  function stopLinePreview() {
+    lineAudio.pause();
+    if (state.linePreviewCtl) { state.linePreviewCtl.abort(); state.linePreviewCtl = null; }
+    if (state.lineLoading) { setLineIcon(state.lineLoading, "idle"); state.lineLoading = null; }
+    if (state.linePreview) { setLineIcon(state.linePreview, "idle"); state.linePreview = null; }
+    if (state.linePreviewUrl) { URL.revokeObjectURL(state.linePreviewUrl); state.linePreviewUrl = null; }
+  }
+
+  function playLine(i) {
+    if (state.linePreview === i) { stopLinePreview(); return; }
+    stopLinePreview();
+    stopPreview();
+
+    var g = globals();
+    var built = buildOneLine(sentTextAt(i), g.pause, g.stress);
+    if (!built.text) { showStatus("That sentence has no words in it.", true); return; }
+
+    var r = resolveSentence();
+    setLineIcon(i, "loading");
+    state.lineLoading = i;
+    var c = new AbortController();
+    state.linePreviewCtl = c;
+
+    renderOne(built.text, r.voice, r.speed, r.pitch, c.signal).then(function (buf) {
+      if (c.signal.aborted) { return; }
+      state.linePreviewCtl = null;
+      state.lineLoading = null;
+      state.linePreview = i;
+      setLineIcon(i, "playing");
+      state.linePreviewUrl = URL.createObjectURL(encodeWav(buf));
+      lineAudio.src = state.linePreviewUrl;
+      return lineAudio.play();
+    }).catch(function (err) {
+      if (c.signal.aborted) { return; }
+      state.linePreviewCtl = null;
+      state.lineLoading = null;
+      setLineIcon(i, "idle");
+      state.linePreview = null;
+      showStatus("Could not play that sentence. " + friendlyError(err), true);
+    });
+  }
+
+  lineAudio.addEventListener("ended", function () {
+    if (state.linePreview) { setLineIcon(state.linePreview, "idle"); state.linePreview = null; }
+    if (state.linePreviewUrl) { URL.revokeObjectURL(state.linePreviewUrl); state.linePreviewUrl = null; }
+  });
+
+  /* ======================================================== pronunciation */
+
+  function renderPron() {
+    var host = $("pronList");
+    host.innerHTML = "";
+    state.pron.forEach(function (p, i) {
+      var row = document.createElement("div");
+      row.className = "pron-row";
+      row.innerHTML =
+        '<input data-pron="from" data-i="' + i + '" placeholder="Calilio" aria-label="Word as written">' +
+        '<span class="pron-arrow" aria-hidden="true">-&gt;</span>' +
+        '<input data-pron="to" data-i="' + i + '" placeholder="Kuh lee lee oh" aria-label="How it should sound">' +
+        '<button type="button" class="line-icon danger" data-pron="del" data-i="' + i + '" aria-label="Remove">' + ICON_X + '</button>';
+      row.querySelector('[data-pron="from"]').value = p.from || "";
+      row.querySelector('[data-pron="to"]').value = p.to || "";
+      host.appendChild(row);
+    });
+    if (!state.pron.length) {
+      var note = document.createElement("p");
+      note.className = "hint";
+      note.textContent = "Nothing set. Press Add a word if a name comes out wrong.";
+      host.appendChild(note);
+    }
+  }
+
+  function savePron() { save("kvs.pron", JSON.stringify(state.pron)); }
+  function savePauses() { save("kvs.pauses", JSON.stringify(state.pauses)); }
+
+  /* ============================================================ rendering */
+
+  function currentStyle() {
+    var id = controls.style.get();
+    for (var i = 0; i < STYLES.length; i++) { if (STYLES[i].id === id) { return STYLES[i]; } }
+    return STYLES[0];
+  }
+
+  function renderVoices() {
+    var list = $("voiceList");
+    list.innerHTML = "";
+    state.voices.forEach(function (v) {
+      var row = document.createElement("div");
+      row.className = "voice";
+      row.setAttribute("data-voice", v.id);
+      row.title = v.f0 + " Hz, " + v.mv + " semitone pitch range";
+
+      var radio = document.createElement("input");
+      radio.type = "radio"; radio.name = "voice";
+      radio.id = "voice-" + v.id; radio.value = v.id;
+
+      var check = document.createElement("span");
+      check.className = "voice-check";
+      check.setAttribute("aria-hidden", "true");
+      check.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.5 5.5L20 6.5"/></svg>';
+
+      var label = document.createElement("label");
+      label.className = "voice-label";
+      label.setAttribute("for", radio.id);
+
+      var nameEl = document.createElement("span");
+      nameEl.className = "voice-name";
+      nameEl.textContent = v.name;
+      if (v.tags.indexOf("expressive") > -1) {
+        var t1 = document.createElement("span");
+        t1.className = "tag tag-star"; t1.textContent = "expressive";
+        nameEl.appendChild(t1);
+      }
+      if (v.old) {
+        var t2 = document.createElement("span");
+        t2.className = "tag tag-old"; t2.textContent = "older";
+        nameEl.appendChild(t2);
+      }
+
+      var metaEl = document.createElement("span");
+      metaEl.className = "voice-meta";
+      metaEl.textContent = v.desc;
+
+      label.appendChild(nameEl);
+      label.appendChild(metaEl);
+
+      var play = document.createElement("button");
+      play.type = "button";
+      play.className = "icon-btn";
+      play.setAttribute("data-preview", v.id);
+      play.setAttribute("aria-label", "Play sample of " + v.name + ", " + v.desc);
+      play.innerHTML = ICON_PLAY;
+
+      row.appendChild(radio);
+      row.appendChild(check);
+      row.appendChild(label);
+      row.appendChild(play);
+      list.appendChild(row);
+    });
+    applyFilters();
+  }
+
+  function langMatches(pick, v) {
+    if (pick === "all") { return true; }
+    if (pick === "old") { return !!v.old; }
+    if (v.old) { return false; }
+    if (pick === "en") { return v.lang === "a" || v.lang === "b"; }
+    if (pick === "ne") { return v.lang === "h"; }
+    return v.lang === pick;
+  }
+
+  function applyFilters() {
+    var lang = controls.lang.get();
+    var gender = controls.gender.get();
+    var tone = controls.tone.get();
+    var text = $("voiceSearch").value.trim().toLowerCase();
+    var shown = 0;
+
+    state.voices.forEach(function (v) {
+      var row = document.querySelector('.voice[data-voice="' + v.id + '"]');
+      if (!row) { return; }
+      var ok = langMatches(lang, v);
+      if (ok && gender !== "all" && v.g !== gender) { ok = false; }
+      if (ok && tone !== "all" && v.tags.indexOf(tone) === -1) { ok = false; }
+      if (ok && text && v.search.indexOf(text) === -1) { ok = false; }
+      row.classList.toggle("is-hidden", !ok);
+      if (ok) { shown++; }
+    });
+
+    $("voiceCount").textContent = shown + " of " + state.voices.length;
+    $("resetFilters").hidden = (lang === "en" && gender === "all" && tone === "all" && !text);
+
+    var note = LANG_NOTES[lang];
+    $("langNote").hidden = !note;
+    $("langNoteText").textContent = note || "";
+
+    var empty = document.querySelector(".voice-list .empty-note");
+    if (empty) { empty.remove(); }
+    if (shown === 0) {
+      var p = document.createElement("p");
+      p.className = "empty-note";
+      p.textContent = "No voices match. Press Show every voice.";
+      $("voiceList").appendChild(p);
+    }
+  }
+
+  function selectVoice(id) {
+    var v = null;
+    for (var i = 0; i < state.voices.length; i++) {
+      if (state.voices[i].id === id) { v = state.voices[i]; break; }
+    }
+    if (!v) { return; }
+    state.selected = v;
+
+    var rows = document.querySelectorAll(".voice");
+    for (var j = 0; j < rows.length; j++) {
+      var on = rows[j].getAttribute("data-voice") === id;
+      rows[j].classList.toggle("is-selected", on);
+      var r = rows[j].querySelector('input[type="radio"]');
+      if (r) { r.checked = on; }
+    }
+
+    $("svName").textContent = v.name + (v.old ? " (older)" : "");
+    $("svMeta").textContent = v.desc;
+    $("svPreview").disabled = false;
+    $("svPreview").setAttribute("aria-label", "Play sample of " + v.name);
+    save("kvs.voice", id);
+    syncPreviewButtons();
+    // Voices read at different speeds, so the whole estimate moves with this.
+    if ($("scriptText") && $("scriptText").value) { refreshEstimates(); }
+  }
+
+  /* ==================================================== preview playback */
+
+  function setPreviewIcon(btn, mode) {
+    if (!btn) { return; }
+    if (mode === "loading") { btn.setAttribute("data-state", "loading"); btn.innerHTML = ICON_LOAD; }
+    else if (mode === "playing") { btn.setAttribute("data-state", "playing"); btn.innerHTML = ICON_STOP; }
+    else { btn.removeAttribute("data-state"); btn.innerHTML = ICON_PLAY; }
+  }
+
+  function previewButtonsFor(id) {
+    var out = [];
+    var b = document.querySelector('[data-preview="' + id + '"]');
+    if (b) { out.push(b); }
+    if (state.selected && state.selected.id === id) { out.push($("svPreview")); }
+    return out;
+  }
+
+  function syncPreviewButtons() {
+    var all = document.querySelectorAll("[data-preview]");
+    for (var i = 0; i < all.length; i++) { setPreviewIcon(all[i], "idle"); }
+    setPreviewIcon($("svPreview"), "idle");
+    if (state.previewVoice) {
+      previewButtonsFor(state.previewVoice).forEach(function (b) { setPreviewIcon(b, "playing"); });
+    }
+  }
+
+  function stopPreview() {
+    sampleAudio.pause();
+    if (state.previewCtl) { state.previewCtl.abort(); state.previewCtl = null; }
+    state.previewVoice = null;
+    syncPreviewButtons();
+  }
+
+  function playPreview(id) {
+    if (state.previewVoice === id) { stopPreview(); return; }
+    stopPreview();
+
+    var v = null;
+    for (var i = 0; i < state.voices.length; i++) {
+      if (state.voices[i].id === id) { v = state.voices[i]; break; }
+    }
+    if (!v) { return; }
+
+    var speed = parseFloat($("speed").value) || 1;
+    var semis = parseFloat($("pitch").value) || 0;
+    var key = id + "@" + speed.toFixed(2) + "@" + semis.toFixed(1) + "@" + controls.lang.get();
+    var btns = previewButtonsFor(id);
+
+    if (state.sampleCache[key]) {
+      state.previewVoice = id;
+      btns.forEach(function (b) { setPreviewIcon(b, "playing"); });
+      sampleAudio.src = state.sampleCache[key];
+      sampleAudio.play().catch(function () { stopPreview(); });
+      return;
+    }
+
+    btns.forEach(function (b) { setPreviewIcon(b, "loading"); });
+    var ctl = new AbortController();
+    state.previewCtl = ctl;
+
+    render(sampleFor(v), id, semis ? "wav" : "mp3", speed, semis, ctl.signal).then(function (blob) {
+      if (ctl.signal.aborted) { return; }
+      var url = URL.createObjectURL(blob);
+      state.sampleCache[key] = url;
+      state.previewCtl = null;
+      state.previewVoice = id;
+      syncPreviewButtons();
+      sampleAudio.src = url;
+      return sampleAudio.play();
+    }).catch(function (err) {
+      if (ctl.signal.aborted) { return; }
+      state.previewCtl = null; state.previewVoice = null;
+      syncPreviewButtons();
+      showStatus("Could not make a sample for " + v.name + ". " + friendlyError(err), true);
+    });
+  }
+
+  sampleAudio.addEventListener("ended", function () {
+    state.previewVoice = null;
+    syncPreviewButtons();
+  });
+
+  /* ============================================================ audio api */
+
+  function speak(text, voice, format, speed, signal) {
+    return fetch(API + "/v1/audio/speech", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "kokoro", input: text, voice: voice,
+        response_format: format, speed: speed, stream: true
+      }),
+      signal: signal
+    }).then(function (res) {
+      if (!res.ok) {
+        return res.text().then(function (t) {
+          throw new Error("Server said " + res.status + ". " + (t || "").slice(0, 200));
+        });
+      }
+      return res.blob();
+    });
+  }
+
+  function encodeWav(buf) {
+    var ch = buf.numberOfChannels, len = buf.length, sr = buf.sampleRate;
+    var total = 44 + len * ch * 2;
+    var ab = new ArrayBuffer(total), dv = new DataView(ab);
+    function str(o, s) { for (var i = 0; i < s.length; i++) { dv.setUint8(o + i, s.charCodeAt(i)); } }
+    str(0, "RIFF"); dv.setUint32(4, total - 8, true); str(8, "WAVE");
+    str(12, "fmt "); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true);
+    dv.setUint16(22, ch, true); dv.setUint32(24, sr, true);
+    dv.setUint32(28, sr * ch * 2, true); dv.setUint16(32, ch * 2, true); dv.setUint16(34, 16, true);
+    str(36, "data"); dv.setUint32(40, len * ch * 2, true);
+    var chans = [], c;
+    for (c = 0; c < ch; c++) { chans.push(buf.getChannelData(c)); }
+    var off = 44;
+    for (var i = 0; i < len; i++) {
+      for (c = 0; c < ch; c++) {
+        var s = Math.max(-1, Math.min(1, chans[c][i]));
+        dv.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+        off += 2;
+      }
+    }
+    return new Blob([ab], { type: "audio/wav" });
+  }
+
+  // Real pitch shifting with the length kept the same. The model has no pitch
+  // control, so: ask the server for audio slowed by the pitch ratio, then speed
+  // it back up here. Speeding up raises the pitch, and the two changes to the
+  // length cancel out. Verified: +3 semitones came out at +3, length off by 0.01s.
+  function shiftPitch(blob, ratio) {
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    var ctx = new Ctx();
+    return blob.arrayBuffer()
+      .then(function (ab) { return ctx.decodeAudioData(ab); })
+      .then(function (buf) {
+        var off = new OfflineAudioContext(buf.numberOfChannels, Math.ceil(buf.length / ratio), buf.sampleRate);
+        var src = off.createBufferSource();
+        src.buffer = buf;
+        src.playbackRate.value = ratio;
+        src.connect(off.destination);
+        src.start();
+        return off.startRendering();
+      })
+      .then(function (rendered) {
+        try { ctx.close(); } catch (e) {}
+        return encodeWav(rendered);
+      });
+  }
+
+  function render(text, voice, format, speed, semis, signal) {
+    if (!semis) { return speak(text, voice, format, speed, signal); }
+    var ratio = Math.pow(2, semis / 12);
+    var serverSpeed = Math.max(0.25, Math.min(4, speed / ratio));
+    return speak(text, voice, "wav", serverSpeed, signal).then(function (blob) {
+      return shiftPitch(blob, ratio);
+    });
+  }
+
+  // Same idea but hands back an AudioBuffer, which is what the line joiner needs.
+  function renderOne(text, voice, speed, semis, signal) {
+    var ratio = semis ? Math.pow(2, semis / 12) : 1;
+    var serverSpeed = Math.max(0.25, Math.min(4, speed / ratio));
+    return speak(text, voice, "wav", serverSpeed, signal)
+      .then(blobToBuffer)
+      .then(function (buf) { return resampleBuffer(buf, ratio); });
+  }
+
+  function friendlyError(err) {
+    if (!err) { return "Unknown problem."; }
+    if (err.name === "AbortError") { return "Stopped."; }
+    if (err.message && err.message.indexOf("Failed to fetch") > -1) {
+      return "Cannot reach the server. Check it is running, then reload this page.";
+    }
+    return err.message || String(err);
+  }
+
+  /* ============================================================== status */
+
+  function showStatus(msg, isError, withProgress) {
+    var box = $("status");
+    box.hidden = false;
+    box.classList.toggle("is-error", !!isError);
+    $("statusMsg").textContent = msg;
+    var old = document.querySelector(".progress");
+    if (old) { old.remove(); }
+    if (withProgress) {
+      var p = document.createElement("div");
+      p.className = "progress";
+      box.parentNode.insertBefore(p, box.nextSibling);
+    }
+  }
+
+  function hideStatus() {
+    $("status").hidden = true;
+    $("elapsed").textContent = "";
+    var bar = document.querySelector(".progress");
+    if (bar) { bar.remove(); }
+  }
+
+  function startTimer() {
+    var t0 = Date.now();
+    stopTimer();
+    state.timer = setInterval(function () {
+      $("elapsed").textContent = ((Date.now() - t0) / 1000).toFixed(1) + "s";
+    }, 100);
+  }
+  function stopTimer() { if (state.timer) { clearInterval(state.timer); state.timer = null; } }
+
+  /* ============================================================ generate */
+
+  function makeFilename(text, voiceName, ext) {
+    var words = text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean).slice(0, 6);
+    var base = words.join("-") || "voiceover";
+    if (base.length > 48) { base = base.slice(0, 48).replace(/-+$/, ""); }
+    return base + "-" + voiceName.toLowerCase() + "." + ext;
+  }
+
+  function setBusy(busy) {
+    $("generateBtn").disabled = busy;
+    $("generateLabel").textContent = busy ? "Making audio..." : "Generate voiceover";
+    $("cancelBtn").hidden = !busy;
+    $("scriptText").readOnly = busy;
+    // The pause boxes cannot take effect mid run either, so do not let them
+    // look live while requests are already in flight.
+    var boxes = document.querySelectorAll('#sents [data-act="pause"], #sents button');
+    for (var i = 0; i < boxes.length; i++) { boxes[i].disabled = busy; }
+  }
+
+  function fmtSize(b) {
+    if (b < 1024) { return b + " B"; }
+    if (b < 1024 * 1024) { return (b / 1024).toFixed(0) + " KB"; }
+    return (b / 1024 / 1024).toFixed(1) + " MB";
+  }
+
+  // True when nothing needs sentence by sentence treatment, in which case one
+  // request to the server does the whole job and any file type is available.
+  function canUseFastPath(spoken) {
+    if (globals().pitch !== 0) { return false; }
+    for (var i = 0; i < spoken.length - 1; i++) {
+      if (spoken[i].pause !== DEFAULT_PAUSE) { return false; }
+    }
+    return true;
+  }
+
+  function finishResult(blob, format, name, detail) {
+    if (state.resultUrl) { URL.revokeObjectURL(state.resultUrl); }
+    state.resultUrl = URL.createObjectURL(blob);
+    $("player").src = state.resultUrl;
+    $("downloadBtn").href = state.resultUrl;
+    $("downloadBtn").setAttribute("download", name);
+    $("fileMeta").textContent = name + "  .  " + format.toUpperCase() + "  .  " + fmtSize(blob.size) + "  .  " + detail;
+    $("result").hidden = false;
+    showStatus("Done. Play it below, then press Download audio file.", false);
+    $("result").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  function generate() {
+    // The button is disabled while busy but Ctrl+Enter is not, and a second run
+    // would overwrite state.genCtl, orphan the first run's abort, and have both
+    // fight over the one result URL.
+    if (state.genCtl) { return; }
+    if (!state.selected) { showStatus("Pick a voice from the Voices list first.", true); return; }
+
+    var scan = scanScript();
+    var r = resolveSentence();
+    var jobs = scan.spoken.map(function (row) {
+      return { raw: row.text, text: row.built.text, pause: row.pause, r: r };
+    });
+    if (!jobs.length) {
+      showStatus("There are no words to read. Type or paste a script first.", true);
+      $("scriptText").focus();
+      return;
+    }
+
+    stopPreview();
+    stopLinePreview();
+
+    var ctl = new AbortController();
+    state.genCtl = ctl;
+    setBusy(true);
+    $("result").hidden = true;
+    startTimer();
+
+    // Name the file after what the user typed, not after the pronunciation
+    // spelling, or "Calilio" turns into "kuh-lee-lee-oh" in the file name.
+    var firstWords = jobs[0].raw.replace(/\*/g, "");
+    var styleLabel = currentStyle().label;
+    var g = globals();
+
+    /* ---- one request, any file type ---- */
+    if (canUseFastPath(scan.spoken)) {
+      var format = controls.format.get();
+      var text = jobs.map(function (j) { return j.text; }).join("\n");
+      showStatus("Making your voiceover with " + state.selected.name + ". Long scripts take longer.", false, true);
+      render(text, g.voice, format, g.speed, 0, ctl.signal).then(function (blob) {
+        stopTimer(); setBusy(false); state.genCtl = null;
+        finishResult(blob, format, makeFilename(firstWords, state.selected.name, EXT[format] || format),
+          state.selected.name + "  .  " + styleLabel + " at " + g.speed.toFixed(2) + "x");
+      }).catch(function (err) {
+        stopTimer(); setBusy(false); state.genCtl = null;
+        if (err && err.name === "AbortError") { hideStatus(); return; }
+        showStatus("Could not make the voiceover. " + friendlyError(err), true);
+      });
+      return;
+    }
+
+    /* ---- sentence by sentence, then joined here with exact pauses ---- */
+    showStatus("Making sentence 1 of " + jobs.length + "...", false, true);
+    var pieces = [];
+    var chain = Promise.resolve();
+
+    jobs.forEach(function (job, i) {
+      chain = chain.then(function () {
+        if (ctl.signal.aborted) { return null; }
+        showStatus("Making sentence " + (i + 1) + " of " + jobs.length + "...", false, true);
+        return renderOne(job.text, job.r.voice, job.r.speed, job.r.pitch, ctl.signal).then(function (buf) {
+          var b = speechBounds(buf);
+          var isLast = i === jobs.length - 1;
+          pieces.push({
+            buf: buf, start: b.start, end: b.end,
+            gapSamples: isLast ? 0 : Math.round(24000 * (job.pause / 1000))
+          });
+        });
+      });
+    });
+
+    chain.then(function () {
+      if (ctl.signal.aborted) { throw Object.assign(new Error("stopped"), { name: "AbortError" }); }
+      var joined = joinBuffers(pieces);
+      if (!joined) { throw new Error("Nothing came back from the server."); }
+      var blob = encodeWav(joined);
+      stopTimer(); setBusy(false); state.genCtl = null;
+      finishResult(blob, "wav", makeFilename(firstWords, state.selected.name, "wav"),
+        jobs.length + " sentences  .  " + state.selected.name + "  .  " + joined.duration.toFixed(1) + "s");
+    }).catch(function (err) {
+      stopTimer(); setBusy(false); state.genCtl = null;
+      if (err && err.name === "AbortError") { hideStatus(); return; }
+      showStatus("Could not make the voiceover. " + friendlyError(err), true);
+    });
+  }
+
+  /* ============================================================= storage */
+
+  function save(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+
+  var SETTING_KEYS = ["kvs.voice", "kvs.lang", "kvs.gender", "kvs.tone", "kvs.style",
+                      "kvs.speed", "kvs.pitch", "kvs.pause", "kvs.stress", "kvs.format"];
+
+  // Older builds saved settings that no longer make sense. Wipe them on a new
+  // build, but never touch whatever script the user has typed.
+  function resetStaleSettings() {
+    if (load("kvs.build") === BUILD) { return; }
+    SETTING_KEYS.forEach(function (k) { try { localStorage.removeItem(k); } catch (e) {} });
+    save("kvs.build", BUILD);
+  }
+
+  /* ======================================================== live preview */
+
+  // Everything the script area shows is derived from the lines, so one call
+  // refreshes the per line estimates, the total, and the warning box together.
+  function refreshPreview() { refreshEstimates(); }
+
+  /* ======================================================== reset actions */
+
+  function hasWork() {
+    return $("scriptText").value.trim().length > 0 || state.pron.length > 0;
+  }
+
+  function resetAll() {
+    if (hasWork() &&
+        !window.confirm("This deletes your script, the pronunciation list, and every setting. Continue?")) {
+      return;
+    }
+    stopPreview();
+    stopLinePreview();
+    if (state.genCtl) { state.genCtl.abort(); }
+    if (state.resultUrl) { URL.revokeObjectURL(state.resultUrl); state.resultUrl = null; }
+
+    SETTING_KEYS.concat(["kvs.text", "kvs.lines", "kvs.pron", "kvs.pauses"]).forEach(function (k) {
+      try { localStorage.removeItem(k); } catch (e) {}
+    });
+
+    controls.lang.set("en"); controls.gender.set("all"); controls.tone.set("all");
+    $("voiceSearch").value = "";
+    applyFilters();
+
+    controls.format.set("wav");
+    controls.style.set("natural");
+    applyStyleDefaults();
+
+    state.pron = [];
+    state.pauses = {};
+    rebuildPronRx();
+    renderPron();
+    $("scriptText").value = "";
+    selectVoice(DEFAULT_VOICE);
+    refreshEstimates(true);
+
+    $("result").hidden = true;
+    $("player").removeAttribute("src");
+    hideStatus(); setBusy(false);
+    $("scriptText").focus();
+  }
+
+  function applyStyleDefaults() {
+    var s = currentStyle();
+    if (s.id !== "custom") {
+      $("speed").value = String(s.speed);
+      $("pitch").value = String(s.pitch);
+      controls.pause.set(s.pause);
+      controls.stress.set(s.emph);
+    }
+    paintSliders();
+    $("styleHint").textContent = s.hint;
+    save("kvs.style", s.id);
+    save("kvs.speed", $("speed").value);
+    save("kvs.pitch", $("pitch").value);
+    save("kvs.pause", controls.pause.get());
+    save("kvs.stress", controls.stress.get());
+    refreshPreview();
+  }
+
+  function paintSliders() {
+    var sp = parseFloat($("speed").value) || 1;
+    var pi = parseFloat($("pitch").value) || 0;
+    $("speedValue").textContent = sp.toFixed(2) + "x";
+    $("pitchValue").textContent = (pi > 0 ? "+" : "") + pi.toFixed(1) + " st";
+    var pitched = pi !== 0;
+    $("formatHint").hidden = !pitched;
+    $("formatHint").textContent = pitched
+      ? "Pitch is applied here in the browser, which can only write WAV. The file stays a WAV until pitch is back at 0."
+      : "";
+    $("pitchHint").hidden = !pitched;
+    $("pitchHint").textContent = pitched
+      ? "Semitones up or down. The model has no pitch control, so this is done by re-timing the audio. That also moves the length by roughly a tenth. Nudge Speed if the timing matters."
+      : "";
+  }
+
+  // Any manual change means the preset no longer describes what is set.
+  function goCustom() {
+    if (controls.style.get() !== "custom") { controls.style.set("custom"); }
+    $("styleHint").textContent = currentStyle().hint;
+    save("kvs.style", "custom");
+  }
+
+  /* ============================================================== wiring */
+
+  var controls = {};
+
+  function setCollapsed(closed) {
+    var el = $("voicePanelBody");
+    el.classList.toggle("is-closed", closed);
+    if (closed) { el.classList.remove("is-open-done"); }
+  }
+
+  function buildControls() {
+    controls.lang = Select("fLang", LANG_OPTS, "en", function (v) {
+      save("kvs.lang", v); applyFilters();
+    });
+    controls.gender = Select("fGender", GENDER_OPTS, "all", function (v) {
+      save("kvs.gender", v); applyFilters();
+    });
+    controls.tone = Select("fTone", TONE_OPTS, "all", function (v) {
+      save("kvs.tone", v); applyFilters();
+    });
+    controls.style = Select("style", STYLES.map(function (s) {
+      return { value: s.id, label: s.label, desc: s.desc };
+    }), "natural", function () { applyStyleDefaults(); });
+    controls.pause = Select("pause", PAUSE_OPTS, "light", function (v) {
+      save("kvs.pause", v); goCustom(); refreshPreview();
+    });
+    controls.stress = Select("stress", STRESS_OPTS, "medium", function (v) {
+      save("kvs.stress", v); goCustom(); refreshPreview();
+    });
+    controls.format = Select("format", FORMAT_OPTS, "wav", function (v) { save("kvs.format", v); });
+  }
+
+  function bind() {
+    $("voiceList").addEventListener("click", function (e) {
+      var t = e.target;
+      var btn = t && t.closest ? t.closest("[data-preview]") : null;
+      if (btn) { e.preventDefault(); playPreview(btn.getAttribute("data-preview")); return; }
+      var row = t && t.closest ? t.closest(".voice") : null;
+      if (row) { selectVoice(row.getAttribute("data-voice")); }
+    });
+    $("voiceList").addEventListener("change", function (e) {
+      if (e.target && e.target.name === "voice") { selectVoice(e.target.value); }
+    });
+
+    $("svPreview").addEventListener("click", function () {
+      if (state.selected) { playPreview(state.selected.id); }
+    });
+
+    $("voiceSearch").addEventListener("input", applyFilters);
+
+    $("resetFilters").addEventListener("click", function () {
+      controls.lang.set("en"); controls.gender.set("all"); controls.tone.set("all");
+      save("kvs.lang", "en"); save("kvs.gender", "all"); save("kvs.tone", "all");
+      $("voiceSearch").value = "";
+      applyFilters();
+    });
+
+    $("voiceToggle").addEventListener("click", function () {
+      var open = this.getAttribute("aria-expanded") === "true";
+      this.setAttribute("aria-expanded", open ? "false" : "true");
+      $("voiceToggleText").textContent = open ? "Show" : "Hide";
+      setCollapsed(open);
+    });
+
+    // Clipping must stop only after the expand has finished, otherwise the
+    // dropdown menus get cut off by the animating container.
+    $("voicePanelBody").addEventListener("transitionend", function (e) {
+      if (e.propertyName !== "grid-template-rows") { return; }
+      this.classList.toggle("is-open-done", !this.classList.contains("is-closed"));
+    });
+
+    // Speed and voice change how long every sentence takes, so the estimates
+    // have to be redone. goCustom alone never triggered that.
+    $("speed").addEventListener("input", function () {
+      paintSliders(); save("kvs.speed", this.value); goCustom(); refreshEstimates();
+    });
+    $("pitch").addEventListener("input", function () {
+      paintSliders(); save("kvs.pitch", this.value); goCustom(); refreshEstimates();
+    });
+
+    $("resetVoiceCtl").addEventListener("click", function () {
+      if (controls.style.get() === "custom") { controls.style.set("natural"); }
+      applyStyleDefaults();
+    });
+
+    /* ---- the script box ---- */
+    $("scriptText").addEventListener("input", function () { refreshEstimates(); });
+
+    /* ---- sentence pause strip ---- */
+    $("sents").addEventListener("input", function (e) {
+      if (e.target.getAttribute("data-act") !== "pause") { return; }
+      var row = e.target.closest(".sent");
+      var i = parseInt(row.getAttribute("data-i"), 10);
+      var ms = parseInt(e.target.value, 10);
+      ms = (isNaN(ms) || !isFinite(ms)) ? DEFAULT_PAUSE : clampPause(ms);
+      setPauseFor(sentTextAt(i), ms);
+      e.target.classList.toggle("is-set", ms !== DEFAULT_PAUSE);
+      row.classList.toggle("is-set", ms !== DEFAULT_PAUSE);
+      refreshEstimates();
+    });
+
+    $("sents").addEventListener("click", function (e) {
+      var t = e.target;
+      var chip = t.closest ? t.closest(".pause-chip") : null;
+      if (chip) {
+        var rowC = chip.closest(".sent");
+        var iC = parseInt(rowC.getAttribute("data-i"), 10);
+        var val = parseInt(chip.getAttribute("data-set"), 10);
+        setPauseFor(sentTextAt(iC), val);
+        refreshEstimates(true);
+        return;
+      }
+      var btn = t.closest ? t.closest('[data-act="play"]') : null;
+      if (btn) { playLine(parseInt(btn.closest(".sent").getAttribute("data-i"), 10)); }
+    });
+
+    $("resetPauses").addEventListener("click", function () {
+      state.pauses = {};
+      savePauses();
+      refreshEstimates(true);
+    });
+
+    /* ---- pronunciation ---- */
+    $("addPronBtn").addEventListener("click", function () {
+      state.pron.push({ from: "", to: "" });
+      renderPron(); savePron();
+      var boxes = document.querySelectorAll('[data-pron="from"]');
+      if (boxes.length) { boxes[boxes.length - 1].focus(); }
+    });
+
+    $("pronList").addEventListener("input", function (e) {
+      var which = e.target.getAttribute("data-pron");
+      if (which !== "from" && which !== "to") { return; }
+      var i = parseInt(e.target.getAttribute("data-i"), 10);
+      if (!state.pron[i]) { return; }
+      state.pron[i][which] = e.target.value;
+      savePron(); rebuildPronRx();
+      refreshEstimates();
+    });
+
+    $("pronList").addEventListener("click", function (e) {
+      var btn = e.target.closest ? e.target.closest('[data-pron="del"]') : null;
+      if (!btn) { return; }
+      state.pron.splice(parseInt(btn.getAttribute("data-i"), 10), 1);
+      renderPron(); savePron(); rebuildPronRx(); refreshEstimates();
+    });
+
+    $("generateBtn").addEventListener("click", generate);
+    $("resetAllBtn").addEventListener("click", resetAll);
+    $("againBtn").addEventListener("click", function () {
+      $("scriptText").focus();
+      $("scriptText").scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+    $("cancelBtn").addEventListener("click", function () {
+      if (state.genCtl) { state.genCtl.abort(); }
+    });
+
+    document.addEventListener("keydown", function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); generate(); }
+    });
+
+    var mq = window.matchMedia("(min-width: 1000px)");
+    function applyMq() {
+      if (mq.matches) { setCollapsed(false); }
+      else if ($("voiceToggle").getAttribute("aria-expanded") !== "true") { setCollapsed(true); }
+    }
+    if (mq.addEventListener) { mq.addEventListener("change", applyMq); }
+    else if (mq.addListener) { mq.addListener(applyMq); }
+    applyMq();
+  }
+
+  /* ================================================================ boot */
+
+  function checkHealth() {
+    fetch(API + "/health").then(function (r) {
+      return r.ok ? r.json() : Promise.reject(new Error("bad status"));
+    }).then(function () {
+      $("serverPill").setAttribute("data-state", "ok");
+      $("serverState").textContent = "Server online";
+    }).catch(function () {
+      $("serverPill").setAttribute("data-state", "down");
+      $("serverState").textContent = "Server offline";
+    });
+  }
+
+  function restore() {
+    var m = { lang: "kvs.lang", gender: "kvs.gender", tone: "kvs.tone",
+              style: "kvs.style", pause: "kvs.pause", stress: "kvs.stress", format: "kvs.format" };
+    for (var k in m) {
+      var v = load(m[k]);
+      if (v) { controls[k].set(v); }
+    }
+    var sp = load("kvs.speed"); if (sp) { $("speed").value = sp; }
+    var pi = load("kvs.pitch"); if (pi) { $("pitch").value = pi; }
+    paintSliders();
+    $("styleHint").textContent = currentStyle().hint;
+
+    // Saved state is only ever as good as whatever is sitting in localStorage.
+    // If any of it is broken, drop that piece and carry on. Throwing here would
+    // stop the rest of the boot and leave a page that cannot even be reset.
+    try {
+      var savedPron = JSON.parse(load("kvs.pron") || "[]");
+      state.pron = (Array.isArray(savedPron) ? savedPron : [])
+        .filter(function (p) { return p && typeof p === "object"; })
+        .map(function (p) {
+          return { from: typeof p.from === "string" ? p.from : "",
+                   to: typeof p.to === "string" ? p.to : "" };
+        });
+    } catch (e) { state.pron = []; }
+    rebuildPronRx();
+    renderPron();
+
+    try {
+      var savedPauses = JSON.parse(load("kvs.pauses") || "{}");
+      state.pauses = {};
+      if (savedPauses && typeof savedPauses === "object" && !Array.isArray(savedPauses)) {
+        Object.keys(savedPauses).slice(0, MAX_LINES * 2).forEach(function (k) {
+          var v = savedPauses[k];
+          if (typeof v === "number" && isFinite(v)) { state.pauses[k] = clampPause(v); }
+        });
+      }
+    } catch (e) { state.pauses = {}; }
+
+    var txt = load("kvs.text");
+    if (typeof txt === "string") { $("scriptText").value = txt; }
+  }
+
+  resetStaleSettings();
+  buildVoices();
+  buildControls();
+  bind();
+  restore();
+  renderVoices();
+  $("buildStamp").textContent = BUILD;
+
+  var wanted = load("kvs.voice"), found = false;
+  for (var i = 0; i < state.voices.length; i++) { if (state.voices[i].id === wanted) { found = true; break; } }
+  selectVoice(found ? wanted : DEFAULT_VOICE);
+
+  refreshEstimates(true);
+  checkHealth();
+  setInterval(checkHealth, 30000);
+})();
+</script>
+</body>
+</html>

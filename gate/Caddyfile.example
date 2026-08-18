@@ -1,0 +1,47 @@
+# This is the EXAMPLE file. Copy it to gate/Caddyfile and put your own
+# password hash in it. The real gate/Caddyfile is gitignored on purpose.
+#
+# Password gate that sits in front of the voiceover server.
+#
+# The voiceover server itself has no login of any kind. This file is what stops
+# a stranger who finds the tunnel address from using it. Do not remove the
+# basic_auth block while the tunnel is running.
+#
+# The password is NOT stored here. Only a bcrypt hash of it is, which cannot be
+# read back. The plain password is in VOICEOVER-PASSWORD.txt in the app folder.
+#
+# To change the password:
+#   docker run --rm caddy:2.10-alpine caddy hash-password --plaintext "new password"
+# then paste the new hash below, update VOICEOVER-PASSWORD.txt, and run:
+#   docker restart voiceover-gate
+
+{
+	admin off
+	auto_https off
+	servers {
+		timeouts {
+			read_body 5m
+			write 30m
+			idle 30m
+		}
+	}
+}
+
+:80 {
+	basic_auth {
+		editors REPLACE_WITH_YOUR_BCRYPT_HASH
+	}
+
+	# Send people straight to the Studio page instead of a bare 404.
+	redir / /web/studio.html 302
+
+	reverse_proxy kokoro:8880 {
+		# Audio is streamed sentence by sentence. Without this Caddy buffers it
+		# and long scripts look frozen until the very end.
+		flush_interval -1
+		transport http {
+			read_timeout 30m
+			write_timeout 30m
+		}
+	}
+}

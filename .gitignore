@@ -1,0 +1,26 @@
+# --- Secrets. Never commit these. ---------------------------------------
+# gate/Caddyfile holds the live bcrypt hash; commit gate/Caddyfile.example instead.
+# CONTEXT-FOR-NEW-CHAT.md and .claude/ are internal notes that also hold it.
+VOICEOVER-PASSWORD.txt
+gate/Caddyfile
+CONTEXT-FOR-NEW-CHAT.md
+.claude/
+.env
+*.env
+*.key
+*.pem
+*.ppk
+id_rsa*
+id_ed25519*
+
+# --- Big binaries. Downloaded, not source. ------------------------------
+tunnel/cloudflared.exe
+
+# --- Runtime junk -------------------------------------------------------
+tunnel/*.log
+deploy/.deploy-state.json
+CURRENT-LINK.txt
+*.mp3
+*.wav
+Thumbs.db
+desktop.ini
