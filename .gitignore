@@ -24,3 +24,6 @@ CURRENT-LINK.txt
 *.wav
 Thumbs.db
 desktop.ini
+
+# Slack webhook is a secret URL
+slack-webhook.txt

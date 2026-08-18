@@ -54,6 +54,29 @@ To hand a temporary internet link to someone outside the office, run
 `start-tunnel.ps1`. It downloads nothing and needs no account, but the address
 changes every single time it starts.
 
+## Make it come back on its own
+
+`autostart-voiceover.ps1` brings the whole thing up with no window and no
+clicking: it starts Docker Desktop if needed, waits for the engine to report
+healthy, refreshes the Studio page inside the container, checks the password
+gate really answers 401, then opens a tunnel and writes the new address to
+`CURRENT-LINK.txt` (and to a copy on the Desktop).
+
+It refuses to publish anything if the gate does not answer 401. That check is
+deliberate: an unlocked gate plus a public address is an open TTS server.
+
+To have it run at every login, run `RUN ONCE - Start Voiceover Automatically.cmd`
+once. It copies `autostart-voiceover.vbs` into the Startup folder. Undo it by
+deleting that file from `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`.
+
+If you drop a Slack incoming-webhook URL into `slack-webhook.txt`, the new
+address is posted to that channel on every restart, so nobody has to go and
+look for it. That file is gitignored.
+
+Caveat worth being honest about: this keeps the app alive on one PC. The PC has
+to be switched on, and a quick tunnel address changes every time the tunnel
+restarts.
+
 ## Run it on a server (recommended for always-on)
 
 See `SERVER-SETUP.md`. In short:
